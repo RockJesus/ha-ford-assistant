@@ -148,6 +148,16 @@ Turn on **Vehicle status Live Activity** to keep your vehicle's status on the lo
 
 To be easy on your phone, it only updates when something you'd see changes. Lock, door, remote start and alarm changes show right away; small fuel, temperature or location changes go out quietly at most every 5 minutes. iOS ends any Live Activity after 8 hours, so Ford Assistant quietly restarts it before then.
 
+## Languages
+
+Ford Assistant is in English and French.
+
+- **Setup, settings and the dashboard** follow each person's own language in Home Assistant (their profile).
+- **Notifications and Live Activities** follow Home Assistant's language (**Settings → System → General**), since they go to phones rather than to one person's screen.
+- Readings Ford Assistant doesn't know a word for (an unusual warning light, say) are spelled out in English.
+
+To add a language, translate `translations/en.json` into `translations/<language>.json`, the `en` block in `messages.py` (notifications), and the `en` block of `WORDS` in `frontend/ford-assistant-panel.js` (dashboard), keeping every `{placeholder}`.
+
 ## Diagnostics
 
 **Settings → Devices & services → Ford Assistant → ⋮ → Download diagnostics** includes the matched Ford entities and their states, with the VIN and locations redacted.

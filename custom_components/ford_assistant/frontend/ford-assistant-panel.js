@@ -13,17 +13,17 @@ const PENDING_TIMEOUT = 45000; // Ford commands can take 30+ seconds
 const LOCK_TIMEOUT = 90000;
 // What the lock reports once a command has really finished.
 const LOCK_DONE = { lock: "locked", unlock: "unlocked" };
-const PENDING_LABELS = { lock: "Locking…", unlock: "Unlocking…" };
+const PENDING_LABELS = { lock: "locking", unlock: "unlocking" };
 const BAD = new Set(["unknown", "unavailable", "", null, undefined]);
 
 const FEATURE_GROUPS = [
-  { title: "Security", keys: ["auto_lock", "night_lock", "door_open_alert", "alarm_alert"] },
+  { title: "security", keys: ["auto_lock", "night_lock", "door_open_alert", "alarm_alert"] },
   {
-    title: "Remote start",
+    title: "remote_start",
     keys: ["precondition", "work_prompt", "auto_extend", "remote_start_activity"],
   },
   {
-    title: "Alerts",
+    title: "alerts",
     keys: [
       "fuel_alert",
       "oil_alert",
@@ -35,8 +35,8 @@ const FEATURE_GROUPS = [
       "plug_in_reminder",
     ],
   },
-  { title: "Garage", keys: ["garage_open", "garage_close"] },
-  { title: "Notifications", keys: ["status_activity", "quiet_hours", "clear_resolved"] },
+  { title: "garage", keys: ["garage_open", "garage_close"] },
+  { title: "notifications", keys: ["status_activity", "quiet_hours", "clear_resolved"] },
 ];
 
 const TIRES = [
@@ -45,6 +45,210 @@ const TIRES = [
   ["rearLeft", "RL"],
   ["rearRight", "RR"],
 ];
+
+// The dashboard's words, by language (Home Assistant's language for the
+// person viewing it). Anything missing falls back to English. To add a
+// language, copy the "en" block and translate the values, keeping every
+// {placeholder}; notifications are in ../messages.py.
+const WORDS = {
+  en: {
+    loading: "Loading your vehicles",
+    load_failed: "Couldn't load your vehicles",
+    try_again: "Try again",
+    no_vehicles: "No vehicles yet",
+    no_vehicles_text: "Add Ford Assistant for a vehicle from the Ford integration to see it here.",
+    open_integration: "Open Ford Assistant",
+    denied_title: "You don't have access to Ford Assistant",
+    denied_text: "Ask an admin to give you access. They can do it at the bottom of this dashboard.",
+    access_title: "Who can use Ford Assistant",
+    access_text: "Admins always can. The dashboard shows where the vehicle is and can unlock and start it, so anyone else only sees it if you check them here.",
+    access_all_admins: "Everyone with a Home Assistant login is an admin.",
+    access_sidebar: "Home Assistant can't show a sidebar entry to only some people, so everyone sees Ford Assistant in the sidebar. People who aren't checked get a page saying they don't have access.",
+    access_saved: "Access saved",
+    // Status
+    alarm_going: "Alarm!",
+    locking: "Locking…",
+    unlocking: "Unlocking…",
+    lock_jammed: "Lock jammed",
+    running: "Running",
+    driving: "Driving",
+    door_open: "Door open",
+    unlocked: "Unlocked",
+    locked: "Locked",
+    parked: "Parked",
+    // Location
+    unknown: "Unknown",
+    home: "Home",
+    away: "Away",
+    // Buttons
+    lock: "Lock",
+    unlock: "Unlock",
+    start: "Start",
+    stop: "Stop",
+    extend: "Extend",
+    honk: "Honk & flash",
+    garage_open: "Open garage",
+    garage_close: "Close garage",
+    refresh: "Refresh",
+    sending: "Sending…",
+    failed: "Couldn't {action}: {error}",
+    // Tiles
+    fuel: "Fuel",
+    battery: "Battery",
+    range: "{range} {unit} range",
+    charging: "Charging",
+    remote_start: "Remote start",
+    min_left: "{minutes} min left",
+    doors: "Doors",
+    n_open: "{count} open",
+    all_closed: "All closed",
+    windows: "Windows",
+    location: "Location",
+    tire_pressure: "Tire pressure",
+    oil_life: "Oil life",
+    battery_12v: "12V battery",
+    alarm: "Alarm",
+    warning_lights: "Warning lights",
+    n_on: "{count} on",
+    none: "None",
+    outside: "Outside",
+    odometer: "Odometer",
+    // Settings
+    security: "Security",
+    alerts: "Alerts",
+    garage: "Garage",
+    notifications: "Notifications",
+    thresholds: "Thresholds & times",
+    // Confirmations
+    cancel: "Cancel",
+    confirm_unlock_title: "Unlock {name}?",
+    confirm_unlock_text: "All doors will unlock.",
+    confirm_start_title: "Start {name}?",
+    confirm_start_text: "The engine will start remotely and run until the timer ends or you stop it.",
+    confirm_garage_title: "Open the garage?",
+    confirm_garage_text: "The garage door will open.",
+    open: "Open",
+    // Readings from the Ford integration (others are spelled out)
+    value_Open: "Open",
+    value_Closed: "Closed",
+    value_ARMED: "Armed",
+    value_PREARMED: "Arming",
+    value_DISARMED: "Disarmed",
+    value_TRIGGERED: "Triggered",
+    value_CONNECTED: "Plugged in",
+    value_DISCONNECTED: "Unplugged",
+    value_STOPPED: "Stopped",
+    value_COMPLETED: "Done",
+    value_FAULT: "Fault",
+    value_STATION_NOT_DETECTED: "Charger not found",
+    door_hood: "Hood",
+    door_tailgate: "Tailgate",
+    door_innerTailgate: "Inner tailgate",
+    door_driverFront: "Driver front",
+    door_passengerFront: "Passenger front",
+    door_driverRear: "Driver rear",
+    door_passengerRear: "Passenger rear",
+    tire_FL: "FL",
+    tire_FR: "FR",
+    tire_RL: "RL",
+    tire_RR: "RR",
+  },
+  fr: {
+    loading: "Chargement de vos véhicules",
+    load_failed: "Impossible de charger vos véhicules",
+    try_again: "Réessayer",
+    no_vehicles: "Aucun véhicule pour l'instant",
+    no_vehicles_text: "Ajoutez Ford Assistant pour un véhicule de l'intégration Ford pour le voir ici.",
+    open_integration: "Ouvrir Ford Assistant",
+    denied_title: "Vous n'avez pas accès à Ford Assistant",
+    denied_text: "Demandez l'accès à un administrateur. Il peut le donner en bas de ce tableau de bord.",
+    access_title: "Qui peut utiliser Ford Assistant",
+    access_text: "Les administrateurs le peuvent toujours. Le tableau de bord montre où se trouve le véhicule et peut le déverrouiller et le démarrer : les autres ne le voient que si vous les cochez ici.",
+    access_all_admins: "Toutes les personnes ayant un compte Home Assistant sont administrateurs.",
+    access_sidebar: "Home Assistant ne peut pas afficher une entrée de la barre latérale pour certaines personnes seulement : tout le monde voit Ford Assistant dans la barre latérale. Les personnes non cochées voient une page indiquant qu'elles n'y ont pas accès.",
+    access_saved: "Accès enregistré",
+    alarm_going: "Alarme !",
+    locking: "Verrouillage…",
+    unlocking: "Déverrouillage…",
+    lock_jammed: "Serrure bloquée",
+    running: "En marche",
+    driving: "En route",
+    door_open: "Porte ouverte",
+    unlocked: "Déverrouillé",
+    locked: "Verrouillé",
+    parked: "Garé",
+    unknown: "Inconnu",
+    home: "Maison",
+    away: "Absent",
+    lock: "Verrouiller",
+    unlock: "Déverrouiller",
+    start: "Démarrer",
+    stop: "Arrêter",
+    extend: "Prolonger",
+    honk: "Klaxon et feux",
+    garage_open: "Ouvrir le garage",
+    garage_close: "Fermer le garage",
+    refresh: "Actualiser",
+    sending: "Envoi…",
+    failed: "Impossible de {action} : {error}",
+    fuel: "Carburant",
+    battery: "Batterie",
+    range: "Autonomie {range} {unit}",
+    charging: "Recharge",
+    remote_start: "Démarrage à distance",
+    min_left: "{minutes} min restantes",
+    doors: "Portes",
+    n_open: "{count} ouverte(s)",
+    all_closed: "Toutes fermées",
+    windows: "Fenêtres",
+    location: "Position",
+    tire_pressure: "Pression des pneus",
+    oil_life: "Durée de vie de l'huile",
+    battery_12v: "Batterie 12 V",
+    alarm: "Alarme",
+    warning_lights: "Voyants",
+    n_on: "{count} allumé(s)",
+    none: "Aucun",
+    outside: "Extérieur",
+    odometer: "Compteur kilométrique",
+    security: "Sécurité",
+    alerts: "Alertes",
+    garage: "Garage",
+    notifications: "Notifications",
+    thresholds: "Seuils et horaires",
+    cancel: "Annuler",
+    confirm_unlock_title: "Déverrouiller {name} ?",
+    confirm_unlock_text: "Toutes les portes seront déverrouillées.",
+    confirm_start_title: "Démarrer {name} ?",
+    confirm_start_text: "Le moteur démarrera à distance et tournera jusqu'à la fin de la minuterie ou jusqu'à ce que vous l'arrêtiez.",
+    confirm_garage_title: "Ouvrir le garage ?",
+    confirm_garage_text: "La porte du garage va s'ouvrir.",
+    open: "Ouvrir",
+    value_Open: "Ouvertes",
+    value_Closed: "Fermées",
+    value_ARMED: "Activée",
+    value_PREARMED: "Activation",
+    value_DISARMED: "Désactivée",
+    value_TRIGGERED: "Déclenchée",
+    value_CONNECTED: "Branché",
+    value_DISCONNECTED: "Débranché",
+    value_STOPPED: "Arrêtée",
+    value_COMPLETED: "Terminée",
+    value_FAULT: "Défaut",
+    value_STATION_NOT_DETECTED: "Borne introuvable",
+    door_hood: "Capot",
+    door_tailgate: "Hayon",
+    door_innerTailgate: "Hayon intérieur",
+    door_driverFront: "Avant conducteur",
+    door_passengerFront: "Avant passager",
+    door_driverRear: "Arrière conducteur",
+    door_passengerRear: "Arrière passager",
+    tire_FL: "AvG",
+    tire_FR: "AvD",
+    tire_RL: "ArG",
+    tire_RR: "ArD",
+  },
+};
 
 const esc = (value) =>
   String(value ?? "").replace(
@@ -176,27 +380,41 @@ class FordAssistantPanel extends HTMLElement {
               data-access-user="${esc(p.id)}" ${a.ids.has(p.id) ? "checked" : ""}> ${esc(p.name)}</label>`,
           )
           .join("")
-      : `<p class="muted">Everyone with a Home Assistant login is an admin.</p>`;
+      : `<p class="muted">${esc(this._t("access_all_admins"))}</p>`;
     const anyone = others.some((p) => a.ids.has(p.id));
     return `<section class="card access">
-      <h2>Who can use Ford Assistant</h2>
-      <p class="muted">Admins always can. The dashboard shows where the vehicle is and can unlock and start it, so anyone else only sees it if you check them here.</p>
+      <h2>${esc(this._t("access_title"))}</h2>
+      <p class="muted">${esc(this._t("access_text"))}</p>
       <div class="access-people">${rows}</div>
-      ${anyone ? `<p class="muted">Home Assistant can't show a sidebar entry to only some people, so everyone sees Ford Assistant in the sidebar. People who aren't checked get a page saying they don't have access.</p>` : ""}
-      ${a.error ? `<p class="muted" role="alert">${esc(a.error)}</p>` : a.saved ? `<p class="muted" role="status">Access saved</p>` : ""}
+      ${anyone ? `<p class="muted">${esc(this._t("access_sidebar"))}</p>` : ""}
+      ${a.error ? `<p class="muted" role="alert">${esc(a.error)}</p>` : a.saved ? `<p class="muted" role="status">${esc(this._t("access_saved"))}</p>` : ""}
     </section>`;
   }
 
   _deniedView() {
     return `<div class="message card">
       <ha-icon icon="mdi:lock-outline"></ha-icon>
-      <h2>You don't have access to Ford Assistant</h2>
-      <p>Ask an admin to give you access. They can do it at the bottom of this dashboard.</p>
+      <h2>${esc(this._t("denied_title"))}</h2>
+      <p>${esc(this._t("denied_text"))}</p>
     </div>`;
   }
 
   get _vehicle() {
     return (this._vehicles || []).find((v) => v.entry_id === this._selected) || null;
+  }
+
+  // Text in the viewer's language (English when it isn't translated).
+  _t(key, values = {}) {
+    const code = String(this._hass?.locale?.language || this._hass?.language || "en");
+    const words = WORDS[code.split(/[-_]/)[0].toLowerCase()] || WORDS.en;
+    const text = words[key] ?? WORDS.en[key] ?? key;
+    return text.replace(/\{(\w+)\}/g, (match, name) => (name in values ? String(values[name]) : match));
+  }
+
+  // A reading from the Ford integration, in words when we know it.
+  _word(prefix, value) {
+    const key = `${prefix}_${value}`;
+    return key in WORDS.en ? this._t(key) : humanize(value);
   }
 
   _state(entityId) {
@@ -318,7 +536,7 @@ class FordAssistantPanel extends HTMLElement {
     const tile = `<div class="tile skeleton-tile"><div class="sk sk-line short"></div>
       <div class="sk sk-line big"></div><div class="sk sk-line"></div></div>`;
     return `
-      <div class="loading" aria-busy="true" aria-label="Loading your vehicles">
+      <div class="loading" aria-busy="true" aria-label="${esc(this._t("loading"))}">
         <section class="hero"><div class="image-wrap"><div class="sk sk-image"></div></div>
           <div class="hero-text"><div class="sk sk-line title"></div><div class="sk sk-line short"></div></div>
         </section>
@@ -330,19 +548,19 @@ class FordAssistantPanel extends HTMLElement {
   _errorView() {
     return `<div class="message card">
       <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
-      <h2>Couldn't load your vehicles</h2>
+      <h2>${esc(this._t("load_failed"))}</h2>
       <p>${esc(this._error)}</p>
-      <button class="button primary" data-action="retry">Try again</button>
+      <button class="button primary" data-action="retry">${esc(this._t("try_again"))}</button>
     </div>`;
   }
 
   _emptyView() {
     return `<div class="message card">
       <ha-icon icon="mdi:car-off"></ha-icon>
-      <h2>No vehicles yet</h2>
-      <p>Add Ford Assistant for a vehicle from the Ford integration to see it here.</p>
+      <h2>${esc(this._t("no_vehicles"))}</h2>
+      <p>${esc(this._t("no_vehicles_text"))}</p>
       <button class="button primary" data-action="navigate"
-        data-path="/config/integrations/integration/ford_assistant">Open Ford Assistant</button>
+        data-path="/config/integrations/integration/ford_assistant">${esc(this._t("open_integration"))}</button>
     </div>`;
   }
 
@@ -362,17 +580,17 @@ class FordAssistantPanel extends HTMLElement {
     // integration also reports "locking"/"unlocking" while it sends one.
     const locking = this._pendingFor(v, "lock") || lock === "locking";
     const unlocking = this._pendingFor(v, "unlock") || lock === "unlocking";
-    if (alarmGoing) return { text: "Alarm!", tone: "error", icon: "mdi:alarm-light" };
-    if (locking) return { text: "Locking…", tone: "info", icon: "mdi:lock-clock" };
-    if (unlocking) return { text: "Unlocking…", tone: "info", icon: "mdi:lock-clock" };
-    if (lock === "jammed") return { text: "Lock jammed", tone: "error", icon: "mdi:lock-alert" };
-    if (running) return { text: "Running", tone: "info", icon: "mdi:engine" };
-    if (driving) return { text: "Driving", tone: "info", icon: "mdi:steering" };
-    if (doorsOpen) return { text: "Door open", tone: "error", icon: "mdi:car-door" };
+    if (alarmGoing) return { text: this._t("alarm_going"), tone: "error", icon: "mdi:alarm-light" };
+    if (locking) return { text: this._t("locking"), tone: "info", icon: "mdi:lock-clock" };
+    if (unlocking) return { text: this._t("unlocking"), tone: "info", icon: "mdi:lock-clock" };
+    if (lock === "jammed") return { text: this._t("lock_jammed"), tone: "error", icon: "mdi:lock-alert" };
+    if (running) return { text: this._t("running"), tone: "info", icon: "mdi:engine" };
+    if (driving) return { text: this._t("driving"), tone: "info", icon: "mdi:steering" };
+    if (doorsOpen) return { text: this._t("door_open"), tone: "error", icon: "mdi:car-door" };
     if (lock === "unlocked")
-      return { text: "Unlocked", tone: home ? "warning" : "error", icon: "mdi:lock-open-variant" };
-    if (lock === "locked") return { text: "Locked", tone: "success", icon: "mdi:lock" };
-    return { text: "Parked", tone: "neutral", icon: "mdi:car" };
+      return { text: this._t("unlocked"), tone: home ? "warning" : "error", icon: "mdi:lock-open-variant" };
+    if (lock === "locked") return { text: this._t("locked"), tone: "success", icon: "mdi:lock" };
+    return { text: this._t("parked"), tone: "neutral", icon: "mdi:car" };
   }
 
   _atHome(v) {
@@ -385,9 +603,9 @@ class FordAssistantPanel extends HTMLElement {
 
   _place(v) {
     const tracker = this._state(v.ford.tracker);
-    if (!tracker || BAD.has(tracker.state)) return "Unknown";
-    if (this._atHome(v)) return "Home";
-    if (tracker.state === "not_home") return "Away";
+    if (!tracker || BAD.has(tracker.state)) return this._t("unknown");
+    if (this._atHome(v)) return this._t("home");
+    if (tracker.state === "not_home") return this._t("away");
     const zone = this._hass.states[`zone.${tracker.state}`];
     return zone ? zone.attributes.friendly_name || tracker.state : humanize(tracker.state);
   }
@@ -464,39 +682,39 @@ class FordAssistantPanel extends HTMLElement {
       const busy = BAD.has(lock) || lock === "locking" || lock === "unlocking";
       items.push(
         lock === "locking"
-          ? this._action("lock", "mdi:lock-clock", "Locking…", true)
+          ? this._action("lock", "mdi:lock-clock", this._t("locking"), true)
           : lock === "unlocking"
-            ? this._action("unlock", "mdi:lock-clock", "Unlocking…", true)
+            ? this._action("unlock", "mdi:lock-clock", this._t("unlocking"), true)
             : lock === "locked"
-              ? this._action("unlock", "mdi:lock-open-variant", "Unlock", busy)
-              : this._action("lock", "mdi:lock", "Lock", busy),
+              ? this._action("unlock", "mdi:lock-open-variant", this._t("unlock"), busy)
+              : this._action("lock", "mdi:lock", this._t("lock"), busy),
       );
     }
     if (f.remote_start) {
       const running = this._value(f.remote_start) === "on";
       items.push(
         running
-          ? this._action("stop", "mdi:engine-off", "Stop", false, "active")
-          : this._action("start", "mdi:engine", "Start", BAD.has(this._value(f.remote_start))),
+          ? this._action("stop", "mdi:engine-off", this._t("stop"), false, "active")
+          : this._action("start", "mdi:engine", this._t("start"), BAD.has(this._value(f.remote_start))),
       );
       // Button entities stay "unknown" until first pressed, so only hide unavailable ones.
       if (running && f.extend && this._usable(f.extend)) {
-        items.push(this._action("extend", "mdi:timer-plus", "Extend"));
+        items.push(this._action("extend", "mdi:timer-plus", this._t("extend")));
       }
     }
     if (f.honk && this._usable(f.honk)) {
-      items.push(this._action("honk", "mdi:car-light-high", "Honk & flash"));
+      items.push(this._action("honk", "mdi:car-light-high", this._t("honk")));
     }
     if (v.garage && this._state(v.garage)) {
       const garage = this._value(v.garage);
       items.push(
         garage === "open" || garage === "opening"
-          ? this._action("garage_close", "mdi:garage", "Close garage")
-          : this._action("garage_open", "mdi:garage-open", "Open garage"),
+          ? this._action("garage_close", "mdi:garage", this._t("garage_close"))
+          : this._action("garage_open", "mdi:garage-open", this._t("garage_open")),
       );
     }
     if (f.refresh && this._usable(f.refresh)) {
-      items.push(this._action("refresh", "mdi:refresh", "Refresh"));
+      items.push(this._action("refresh", "mdi:refresh", this._t("refresh")));
     }
     return items.join("");
   }
@@ -518,7 +736,7 @@ class FordAssistantPanel extends HTMLElement {
       <span class="action-icon">${
         pending ? `<span class="spinner" aria-hidden="true"></span>` : `<ha-icon icon="${icon}"></ha-icon>`
       }</span>
-      <span class="action-label">${esc(pending ? PENDING_LABELS[action] || "Sending…" : label)}</span>
+      <span class="action-label">${esc(pending ? this._t(PENDING_LABELS[action] || "sending") : label)}</span>
     </button>`;
   }
 
@@ -540,9 +758,9 @@ class FordAssistantPanel extends HTMLElement {
         this._tile({
           entity: energyId,
           icon: isFuel ? "mdi:gas-station" : "mdi:battery-charging-high",
-          label: isFuel ? "Fuel" : "Battery",
+          label: this._t(isFuel ? "fuel" : "battery"),
           value: level === null ? "—" : `${Math.round(level)}%`,
-          detail: range === null ? "" : `${Math.round(range)} ${unit} range`,
+          detail: range === null ? "" : this._t("range", { range: Math.round(range), unit }),
           bar: level,
           tone: low ? "error" : "",
           wide: true,
@@ -554,14 +772,14 @@ class FordAssistantPanel extends HTMLElement {
       const charging = this._value(f.ev_charging);
       const plug = this._value(f.ev_plug);
       const value =
-        charging === "IN_PROGRESS" ? "Charging" : !BAD.has(plug) ? humanize(plug) : "—";
+        charging === "IN_PROGRESS" ? this._t("charging") : !BAD.has(plug) ? this._word("value", plug) : "—";
       tiles.push(
         this._tile({
           entity: f.ev_charging || f.ev_plug,
           icon: charging === "IN_PROGRESS" ? "mdi:ev-station" : "mdi:ev-plug-type1",
-          label: "Charging",
+          label: this._t("charging"),
           value,
-          detail: !BAD.has(charging) && charging !== "IN_PROGRESS" ? humanize(charging) : "",
+          detail: !BAD.has(charging) && charging !== "IN_PROGRESS" ? this._word("value", charging) : "",
           tone: ["FAULT", "STATION_NOT_DETECTED"].includes(charging) ? "error" : "",
         }),
       );
@@ -573,8 +791,8 @@ class FordAssistantPanel extends HTMLElement {
         this._tile({
           entity: f.countdown || f.remote_start,
           icon: "mdi:timer-sand",
-          label: "Remote start",
-          value: minutes ? `${Math.round(minutes)} min left` : "Running",
+          label: this._t("remote_start"),
+          value: minutes ? this._t("min_left", { minutes: Math.round(minutes) }) : this._t("running"),
           tone: "info",
         }),
       );
@@ -589,14 +807,14 @@ class FordAssistantPanel extends HTMLElement {
                 typeof val === "string" && /^[A-Z_]+$/.test(val) &&
                 !["CLOSED", "INVALID", "UNKNOWN", "UNSUPPORTED"].includes(val),
             )
-            .map(([key]) => humanize(key))
+            .map(([key]) => this._word("door", key))
         : [];
       tiles.push(
         this._tile({
           entity: f.doors,
           icon: open.length ? "mdi:car-door" : "mdi:car-door-lock",
-          label: "Doors",
-          value: open.length ? `${open.length} open` : doors ? "All closed" : "—",
+          label: this._t("doors"),
+          value: open.length ? this._t("n_open", { count: open.length }) : doors ? this._t("all_closed") : "—",
           detail: open.join(", "),
           tone: open.length ? "error" : "",
         }),
@@ -609,8 +827,8 @@ class FordAssistantPanel extends HTMLElement {
         this._tile({
           entity: f.windows,
           icon: windows === "Open" ? "mdi:car-door" : "mdi:window-closed-variant",
-          label: "Windows",
-          value: BAD.has(windows) ? "—" : windows,
+          label: this._t("windows"),
+          value: BAD.has(windows) ? "—" : this._word("value", windows),
           tone: windows === "Open" && !this._atHome(v) ? "warning" : "",
         }),
       );
@@ -621,7 +839,7 @@ class FordAssistantPanel extends HTMLElement {
         this._tile({
           entity: f.tracker,
           icon: this._atHome(v) ? "mdi:home" : "mdi:map-marker",
-          label: "Location",
+          label: this._t("location"),
           value: this._place(v),
         }),
       );
@@ -636,7 +854,7 @@ class FordAssistantPanel extends HTMLElement {
         this._tile({
           entity: f.oil,
           icon: "mdi:oil",
-          label: "Oil life",
+          label: this._t("oil_life"),
           value: oil === null ? "—" : `${Math.round(oil)}%`,
           bar: oil,
           tone: oil !== null && threshold !== null && oil < threshold ? "warning" : "",
@@ -653,7 +871,7 @@ class FordAssistantPanel extends HTMLElement {
         this._tile({
           entity: f.battery,
           icon: "mdi:car-battery",
-          label: "12V battery",
+          label: this._t("battery_12v"),
           value: level === null ? "—" : `${Math.round(level)}%`,
           detail: volts === null ? "" : `${volts.toFixed(1)} V`,
           tone: level !== null && threshold !== null && level < threshold ? "warning" : "",
@@ -668,8 +886,8 @@ class FordAssistantPanel extends HTMLElement {
         this._tile({
           entity: f.alarm,
           icon: going ? "mdi:alarm-light" : "mdi:shield-car",
-          label: "Alarm",
-          value: BAD.has(alarm) ? "—" : humanize(alarm),
+          label: this._t("alarm"),
+          value: BAD.has(alarm) ? "—" : this._word("value", alarm),
           tone: going ? "error" : "",
         }),
       );
@@ -686,8 +904,8 @@ class FordAssistantPanel extends HTMLElement {
         this._tile({
           entity: f.indicators,
           icon: on.length ? "mdi:car-light-alert" : "mdi:car-info",
-          label: "Warning lights",
-          value: on.length ? `${on.length} on` : indicators ? "None" : "—",
+          label: this._t("warning_lights"),
+          value: on.length ? this._t("n_on", { count: on.length }) : indicators ? this._t("none") : "—",
           detail: on.join(", "),
           tone: on.length ? "warning" : "",
         }),
@@ -699,7 +917,7 @@ class FordAssistantPanel extends HTMLElement {
         this._tile({
           entity: f.temperature,
           icon: "mdi:thermometer",
-          label: "Outside",
+          label: this._t("outside"),
           value: this._format(f.temperature),
         }),
       );
@@ -710,7 +928,7 @@ class FordAssistantPanel extends HTMLElement {
         this._tile({
           entity: f.odometer,
           icon: "mdi:counter",
-          label: "Odometer",
+          label: this._t("odometer"),
           value: this._format(f.odometer),
         }),
       );
@@ -742,12 +960,12 @@ class FordAssistantPanel extends HTMLElement {
     const wheels = TIRES.map(([key, short]) => {
       const state = attrs[`${key}_state`];
       const bad = state && state !== "NORMAL";
-      return `<div class="wheel ${bad ? "bad" : ""}"><span>${short}</span>
+      return `<div class="wheel ${bad ? "bad" : ""}"><span>${esc(this._t(`tire_${short}`))}</span>
         <strong>${esc(attrs[key] !== undefined ? attrs[key] : "—")}</strong></div>`;
     }).join("");
     return `<button class="tile tires ${warn ? "warning" : ""}" data-action="more-info"
         data-entity="${esc(entityId)}">
-      <div class="tile-head"><ha-icon icon="mdi:car-tire-alert"></ha-icon><span>Tire pressure</span></div>
+      <div class="tile-head"><ha-icon icon="mdi:car-tire-alert"></ha-icon><span>${esc(this._t("tire_pressure"))}</span></div>
       <div class="wheels">${wheels}</div>
       ${warn ? `<div class="tile-detail">${esc(humanize(system))}</div>` : ""}
     </button>`;
@@ -773,13 +991,13 @@ class FordAssistantPanel extends HTMLElement {
           </div>`;
         })
         .join("");
-      return rows ? `<div class="group"><h3>${esc(group.title)}</h3>${rows}</div>` : "";
+      return rows ? `<div class="group"><h3>${esc(this._t(group.title))}</h3>${rows}</div>` : "";
     }).join("");
     if (!groups) return "";
     const settings = v.assistant_device_id
       ? `<button class="button" data-action="navigate"
           data-path="/config/devices/device/${esc(v.assistant_device_id)}">
-          <ha-icon icon="mdi:tune-variant"></ha-icon>Thresholds &amp; times</button>`
+          <ha-icon icon="mdi:tune-variant"></ha-icon>${esc(this._t("thresholds"))}</button>`
       : "";
     return `<section class="card features">
       <div class="features-head"><h2>Ford Assistant</h2>${settings}</div>
@@ -795,7 +1013,7 @@ class FordAssistantPanel extends HTMLElement {
         <h2 id="fa-dialog-title">${esc(title)}</h2>
         <p>${esc(text)}</p>
         <div class="dialog-buttons">
-          <button class="button" data-action="cancel">Cancel</button>
+          <button class="button" data-action="cancel">${esc(this._t("cancel"))}</button>
           <button class="button primary" data-confirm data-action="confirm">${esc(label)}</button>
         </div>
       </div>`;
@@ -862,19 +1080,19 @@ class FordAssistantPanel extends HTMLElement {
   _command(action, v) {
     const confirms = {
       unlock: {
-        title: `Unlock ${v.name}?`,
-        text: "All doors will unlock.",
-        label: "Unlock",
+        title: this._t("confirm_unlock_title", { name: v.name }),
+        text: this._t("confirm_unlock_text"),
+        label: this._t("unlock"),
       },
       start: {
-        title: `Start ${v.name}?`,
-        text: "The engine will start remotely and run until the timer ends or you stop it.",
-        label: "Start",
+        title: this._t("confirm_start_title", { name: v.name }),
+        text: this._t("confirm_start_text"),
+        label: this._t("start"),
       },
       garage_open: {
-        title: "Open the garage?",
-        text: "The garage door will open.",
-        label: "Open",
+        title: this._t("confirm_garage_title"),
+        text: this._t("confirm_garage_text"),
+        label: this._t("open"),
       },
     };
     if (confirms[action]) {
@@ -911,7 +1129,8 @@ class FordAssistantPanel extends HTMLElement {
     Promise.resolve(this._hass.callService(domain, service, { entity_id: entityId })).catch((err) => {
       clearTimeout(timer);
       this._pending.delete(action);
-      this._toast(`Couldn't ${action.replace("_", " ")}: ${(err && err.message) || err}`);
+      const what = this._t(action === "honk" ? "honk" : action).toLowerCase();
+      this._toast(this._t("failed", { action: what, error: (err && err.message) || err }));
       this._render(true);
     });
   }

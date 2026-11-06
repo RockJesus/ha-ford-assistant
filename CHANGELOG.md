@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.3] - 2026-11-06
+
+### Added
+
+- **French.** Ford Assistant is now in French as well as English ([#4](https://github.com/bisman-automations/ha-ford-assistant/issues/4)):
+  - setup, settings and the switch, number and time names;
+  - the dashboard, which follows each person's own language in Home Assistant;
+  - notifications, their buttons and the vehicle status Live Activity, which follow Home Assistant's language (**Settings → System → General**).
+
+  Readings Ford Assistant doesn't have a word for are spelled out in English.
+
 ## [1.6.2] - 2026-11-06
 
 ### Fixed
@@ -108,6 +119,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Actionable notifications with Lock, Honk & Flash, Start and Stop buttons.
 - Feature switches, number and time settings on the vehicle's device, a last-event sensor, a `ford_assistant_alert` event, a repair issue for missing Ford entities, and diagnostics.
 
+[1.6.3]: https://github.com/bisman-automations/ha-ford-assistant/compare/v1.6.2...v1.6.3
 [1.6.2]: https://github.com/bisman-automations/ha-ford-assistant/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/bisman-automations/ha-ford-assistant/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/bisman-automations/ha-ford-assistant/compare/v1.5.0...v1.6.0

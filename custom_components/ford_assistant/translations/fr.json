@@ -1,0 +1,245 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Choisir un véhicule",
+        "description": "Choisissez un véhicule configuré par l'intégration Ford.",
+        "data": {
+          "vin": "Véhicule"
+        }
+      },
+      "settings": {
+        "title": "Alertes et lieux",
+        "description": "Choisissez qui reçoit les notifications et quels lieux comptent. Vous pourrez les modifier plus tard.",
+        "data": {
+          "notify_devices": "Appareils à notifier",
+          "phone_tracker": "Votre téléphone",
+          "home_zone": "Zone de la maison",
+          "work_zone": "Zone du travail",
+          "weather_entity": "Météo",
+          "todo_entity": "Liste de tâches pour les vidanges",
+          "garage_cover": "Porte de garage"
+        },
+        "data_description": {
+          "notify_devices": "Téléphones qui reçoivent les notifications avec les boutons Verrouiller, Klaxon, Démarrer et Arrêter.",
+          "phone_tracker": "Facultatif. Le verrouillage automatique attend que ce téléphone soit loin du véhicule.",
+          "home_zone": "Le verrouillage automatique ne fonctionne qu'en dehors de cette zone ; le préconditionnement et le garage ne fonctionnent qu'à l'intérieur.",
+          "work_zone": "Facultatif. Sert au rappel de démarrage en quittant le travail et au rappel de carburant bas.",
+          "weather_entity": "Facultatif. Nécessaire pour l'alerte de pluie quand les fenêtres sont ouvertes.",
+          "todo_entity": "Facultatif. Une tâche de vidange est ajoutée quand la durée de vie de l'huile est basse.",
+          "garage_cover": "Facultatif. S'ouvre quand vous arrivez à la maison et se ferme une fois garé."
+        }
+      },
+      "import_blueprint": {
+        "title": "Copier les réglages du blueprint",
+        "description": "Une automatisation du blueprint Vehicle Assistant a été trouvée pour ce véhicule. Copier ses téléphones, lieux, fonctions, seuils et heures dans Ford Assistant ?",
+        "data": {
+          "automation": "Copier depuis",
+          "disable_automation": "Désactiver l'automatisation du blueprint"
+        },
+        "data_description": {
+          "automation": "Choisissez l'automatisation à copier, ou repartez de zéro.",
+          "disable_automation": "Recommandé, pour ne pas recevoir chaque notification en double. L'automatisation est désactivée, pas supprimée."
+        }
+      }
+    },
+    "error": {
+      "missing_entities": "L'intégration Ford n'a pas encore créé de serrure de porte et de suivi pour ce véhicule."
+    },
+    "abort": {
+      "no_vehicles": "Aucun véhicule trouvé. Configurez d'abord l'intégration Ford.",
+      "already_configured": "Chaque véhicule Ford a déjà Ford Assistant."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options de Ford Assistant",
+        "data": {
+          "notify_devices": "Appareils à notifier",
+          "phone_tracker": "Votre téléphone",
+          "home_zone": "Zone de la maison",
+          "work_zone": "Zone du travail",
+          "weather_entity": "Météo",
+          "todo_entity": "Liste de tâches pour les vidanges",
+          "garage_cover": "Porte de garage",
+          "precondition_days": "Jours de préconditionnement",
+          "work_prompt_days": "Jours du rappel en quittant le travail",
+          "alarm_normal_states": "États normaux de l'alarme"
+        },
+        "data_description": {
+          "notify_devices": "Téléphones qui reçoivent les notifications avec les boutons Verrouiller, Klaxon, Démarrer et Arrêter.",
+          "phone_tracker": "Facultatif. Le verrouillage automatique attend que ce téléphone soit loin du véhicule.",
+          "home_zone": "Le verrouillage automatique ne fonctionne qu'en dehors de cette zone ; le préconditionnement et le garage ne fonctionnent qu'à l'intérieur.",
+          "work_zone": "Facultatif. Sert au rappel de démarrage en quittant le travail et au rappel de carburant bas.",
+          "weather_entity": "Facultatif. Nécessaire pour l'alerte de pluie quand les fenêtres sont ouvertes.",
+          "todo_entity": "Facultatif. Une tâche de vidange est ajoutée quand la durée de vie de l'huile est basse.",
+          "garage_cover": "Facultatif. S'ouvre quand vous arrivez à la maison et se ferme une fois garé.",
+          "alarm_normal_states": "Tout autre état de l'alarme envoie une notification critique."
+        }
+      }
+    }
+  },
+  "selector": {
+    "weekday": {
+      "options": {
+        "mon": "Lundi",
+        "tue": "Mardi",
+        "wed": "Mercredi",
+        "thu": "Jeudi",
+        "fri": "Vendredi",
+        "sat": "Samedi",
+        "sun": "Dimanche"
+      }
+    },
+    "import_choice": {
+      "options": {
+        "skip": "Ne rien copier, repartir de zéro"
+      }
+    }
+  },
+  "entity": {
+    "switch": {
+      "auto_lock": {
+        "name": "Verrouillage automatique loin de la maison"
+      },
+      "precondition": {
+        "name": "Préconditionnement du matin"
+      },
+      "work_prompt": {
+        "name": "Rappel de démarrage en quittant le travail"
+      },
+      "auto_extend": {
+        "name": "Prolongation automatique du démarrage à distance"
+      },
+      "alarm_alert": {
+        "name": "Alerte d'alarme"
+      },
+      "windows_alert": {
+        "name": "Alerte de pluie fenêtres ouvertes"
+      },
+      "fuel_alert": {
+        "name": "Alerte de carburant bas"
+      },
+      "oil_alert": {
+        "name": "Alerte de vidange"
+      },
+      "battery_alert": {
+        "name": "Alerte de batterie 12 V"
+      },
+      "tire_alert": {
+        "name": "Alerte de pression des pneus"
+      },
+      "indicator_alert": {
+        "name": "Alerte de voyant"
+      },
+      "garage_open": {
+        "name": "Ouvrir le garage à l'arrivée"
+      },
+      "garage_close": {
+        "name": "Fermer le garage une fois garé"
+      },
+      "night_lock": {
+        "name": "Verrouiller la nuit"
+      },
+      "door_open_alert": {
+        "name": "Alerte de porte ouverte"
+      },
+      "clear_resolved": {
+        "name": "Effacer les notifications résolues"
+      },
+      "quiet_hours": {
+        "name": "Heures calmes"
+      },
+      "remote_start_activity": {
+        "name": "Activité en direct du démarrage à distance"
+      },
+      "plug_in_reminder": {
+        "name": "Rappel de branchement"
+      },
+      "charge_alert": {
+        "name": "Alerte de recharge"
+      },
+      "status_activity": {
+        "name": "Activité en direct de l'état du véhicule"
+      }
+    },
+    "number": {
+      "auto_lock_delay": {
+        "name": "Délai du verrouillage automatique"
+      },
+      "walk_away_distance": {
+        "name": "Distance d'éloignement du verrouillage automatique"
+      },
+      "cold_threshold": {
+        "name": "Démarrer s'il fait plus froid que"
+      },
+      "hot_threshold": {
+        "name": "Démarrer s'il fait plus chaud que"
+      },
+      "min_fuel_to_start": {
+        "name": "Carburant minimum pour démarrer à distance"
+      },
+      "extend_below": {
+        "name": "Prolonger le démarrage à distance sous"
+      },
+      "fuel_threshold": {
+        "name": "Seuil de carburant bas"
+      },
+      "oil_threshold": {
+        "name": "Seuil de durée de vie de l'huile"
+      },
+      "battery_threshold": {
+        "name": "Seuil de la batterie 12 V"
+      },
+      "garage_close_delay": {
+        "name": "Délai de fermeture du garage"
+      },
+      "door_open_delay": {
+        "name": "Délai de l'alerte de porte ouverte"
+      },
+      "plug_in_below": {
+        "name": "Rappel de branchement sous"
+      }
+    },
+    "time": {
+      "precondition_time": {
+        "name": "Heure du préconditionnement"
+      },
+      "work_prompt_time": {
+        "name": "Heure du rappel en quittant le travail"
+      },
+      "night_lock_time": {
+        "name": "Heure du verrouillage de nuit"
+      },
+      "quiet_start": {
+        "name": "Début des heures calmes"
+      },
+      "quiet_end": {
+        "name": "Fin des heures calmes"
+      },
+      "plug_in_time": {
+        "name": "Heure du rappel de branchement"
+      }
+    },
+    "sensor": {
+      "last_event": {
+        "name": "Dernier événement de l'assistant"
+      }
+    }
+  },
+  "exceptions": {
+    "missing_entities": {
+      "message": "La serrure de porte ou le suivi du véhicule {vin} de l'intégration Ford n'est pas encore disponible."
+    },
+    "not_allowed": {
+      "message": "Vous n'avez pas accès à Ford Assistant. Un administrateur peut vous donner accès dans le tableau de bord Ford Assistant."
+    }
+  },
+  "issues": {
+    "missing_entities": {
+      "title": "Ford Assistant ne trouve pas {vehicle}",
+      "description": "Ford Assistant a besoin de ces entités de l'intégration Ford : {entities}. Vérifiez que l'intégration Ford est configurée et que les entités du véhicule sont activées, puis rechargez Ford Assistant."
+    }
+  }
+}

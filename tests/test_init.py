@@ -258,6 +258,26 @@ async def test_night_lock(hass: HomeAssistant, ford: str) -> None:
     assert notify_calls[-1].data["title"].endswith("locked for the night")
 
 
+async def test_notifications_in_home_assistants_language(
+    hass: HomeAssistant, ford: str
+) -> None:
+    """With Home Assistant in French, notifications and their buttons are too."""
+    hass.config.language = "fr"
+    hass.states.async_set(_entity_id("tracker"), "home", {**HOME, "gps_accuracy": 5})
+    async_mock_service(hass, "lock", "lock")
+    notify_calls = async_mock_service(hass, "notify", "mobile_app_my_phone")
+    entry = await _setup(hass, ford)
+    await entry.runtime_data._night_lock()
+    await hass.async_block_till_done()
+    data = notify_calls[-1].data
+    assert data["title"].endswith("verrouillé pour la nuit")
+    assert data["message"] == (
+        "Il était encore déverrouillé, Home Assistant l'a donc verrouillé."
+    )
+    if data["data"].get("actions"):
+        assert data["data"]["actions"][0]["title"] == "Klaxon et feux"
+
+
 async def test_night_lock_door_open(hass: HomeAssistant, ford: str) -> None:
     hass.states.async_set(_entity_id("tracker"), "home", {**HOME, "gps_accuracy": 5})
     hass.states.async_set(

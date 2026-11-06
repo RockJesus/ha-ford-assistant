@@ -60,9 +60,10 @@ BAD = (STATE_UNKNOWN, STATE_UNAVAILABLE, None)
 class StatusView:
     """What the activity shows; compared to decide whether to push."""
 
-    headline: str
+    headline: str  # in Home Assistant's language
     message: str
     attention: bool
+    running: bool
     level: int | None
     running_until: int | None  # epoch seconds, rounded to the minute
 
@@ -219,31 +220,39 @@ class StatusActivity:
         home = c._in_zone(c._home())
 
         if alarm_going:
-            headline, attention = "Alarm!", True
+            key, attention = "status_alarm", True
         elif running:
-            headline = "Running"
+            key = "status_running"
         elif driving:
-            headline = "Driving"
+            key = "status_driving"
         elif doors_open:
-            headline, attention = "Door open", True
+            key, attention = "status_door_open", True
         elif lock == "unlocked":
-            headline, attention = "Unlocked", not home
+            key, attention = "status_unlocked", not home
         elif lock == "locked":
-            headline = "Locked"
+            key = "status_locked"
         else:
-            headline = "Parked"
+            key = "status_parked"
+        headline = c._t(key)
 
         if alarm_going:
-            parts.append(f"🚨 Alarm: {alarm}")
+            parts.append(c._t("part_alarm", state=alarm))
         if doors_open:
             state = c._state("doors")
-            names = open_doors(state.attributes) if state else []
-            parts.append("🚪 " + (", ".join(names) + " open" if names else "Door open"))
+            names = open_doors(state.attributes, c._door_name) if state else []
+            parts.append(
+                c._t("part_doors_open", doors=", ".join(names))
+                if names
+                else c._t("part_door_open")
+            )
         if windows_open:
-            parts.append("🪟 Windows open")
+            parts.append(c._t("part_windows_open"))
             attention = attention or not home
-        if headline not in ("Locked", "Unlocked") and lock in ("locked", "unlocked"):
-            parts.append("🔒 Locked" if lock == "locked" else "🔓 Unlocked")
+        if key not in ("status_locked", "status_unlocked") and lock in (
+            "locked",
+            "unlocked",
+        ):
+            parts.append(c._t("part_locked" if lock == "locked" else "part_unlocked"))
 
         level, source, energy_range = c._energy()
         if level is not None:
@@ -257,11 +266,11 @@ class StatusActivity:
             charging = c._value("ev_charging")
             plug = c._value("ev_plug")
             if charging == CHARGE_IN_PROGRESS:
-                parts.append("⚡ Charging")
+                parts.append(c._t("part_charging"))
             elif plug not in (*BAD, PLUG_DISCONNECTED):
-                parts.append("🔌 Plugged in")
+                parts.append(c._t("part_plugged_in"))
 
-        parts.append("🏠 Home" if home else f"📍 {self._place()}")
+        parts.append(c._t("part_home") if home else f"📍 {self._place()}")
 
         temp = c._number("temperature")
         if temp is not None:
@@ -283,6 +292,7 @@ class StatusActivity:
 
         return StatusView(
             headline=headline,
+            running=running,
             message=" · ".join(parts),
             attention=attention,
             level=round(level) if level is not None else None,
@@ -292,7 +302,7 @@ class StatusActivity:
     def _place(self) -> str:
         tracker = self.c._state("tracker")
         if tracker is None or tracker.state in (*BAD, "not_home", "home"):
-            return "Away"
+            return self.c._t("away")
         return tracker.state
 
     def payload(self, view: StatusView, quiet: bool = False) -> dict[str, Any]:
@@ -328,7 +338,7 @@ class StatusActivity:
         if c._value("lock") == "unlocked" and "lock" in c.entities:
             commands.append("LOCK")
         if "remote_start" in c.entities:
-            commands.append("STOP" if view.headline == "Running" else "START")
+            commands.append("STOP" if view.running else "START")
         if commands:
             data["actions"] = c._actions(commands)
         if url := c._tap_url():

@@ -40,6 +40,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 from homeassistant.util.location import distance as gps_distance
 
+from . import messages
 from .compat import device_entry_ids
 from .const import (
     ACTIVITY_COLOR,
@@ -74,9 +75,11 @@ from .const import (
 )
 from .discovery import ford_device, resolve_entities, vehicle_name
 from .logic import (
+    TIRE_POSITIONS,
     action_id,
     active_indicators,
     countdown_minutes,
+    humanize,
     in_quiet_hours,
     notify_service_name,
     open_doors,
@@ -452,9 +455,16 @@ class FordAssistantController:
             self.numbers["hot_threshold"],
         )
 
+    def _t(self, key: str, **values: Any) -> str:
+        """Text for a notification, in Home Assistant's language."""
+        return messages.text(self.hass.config.language, key, **values)
+
+    def _door_name(self, key: str) -> str:
+        return messages.door_name(self.hass.config.language, key, humanize(key))
+
     def _temp_text(self) -> str:
         temp = self._number("temperature")
-        return "" if temp is None else f"It's {round(temp)}° outside. "
+        return "" if temp is None else self._t("temp_outside", temp=round(temp))
 
     def _start_timer(self, key: str, delay: float, action: Callable[[], Any]) -> None:
         self._cancel_timer(key)
@@ -566,11 +576,11 @@ class FordAssistantController:
 
     def _actions(self, commands: list[str]) -> list[dict[str, str]]:
         labels = {
-            "LOCK": "Lock",
-            "HONK": "Honk & Flash",
-            "START": "Start",
-            "STOP": "Stop",
-            "EXTEND": "Extend",
+            "LOCK": self._t("action_lock"),
+            "HONK": self._t("action_honk"),
+            "START": self._t("action_start"),
+            "STOP": self._t("action_stop"),
+            "EXTEND": self._t("action_extend"),
         }
         return [
             {"action": action_id(cmd, self.vin), "title": labels[cmd]}
@@ -760,12 +770,12 @@ class FordAssistantController:
     def _open_door_text(self) -> tuple[str, bool]:
         """Which doors are open, and whether that's more than one."""
         state = self._state("doors")
-        doors = open_doors(state.attributes) if state else []
+        doors = open_doors(state.attributes, self._door_name) if state else []
         if not doors:
-            return "A door", False
+            return self._t("a_door"), False
         if len(doors) == 1:
             return doors[0], False
-        return ", ".join(doors[:-1]) + " and " + doors[-1].lower(), True
+        return self._t("and", first=", ".join(doors[:-1]), last=doors[-1].lower()), True
 
     async def _check_door_open(self) -> None:
         if not (
@@ -780,8 +790,12 @@ class FordAssistantController:
         doors, plural = self._open_door_text()
         await self._notify(
             "door",
-            f"🚪 {self.name} door open",
-            f"{doors} {'have' if plural else 'has'} been open for {minutes} minutes.",
+            self._t("door_title", name=self.name),
+            self._t(
+                "door_open_for_many" if plural else "door_open_for_one",
+                doors=doors,
+                minutes=minutes,
+            ),
             time_sensitive=True,
         )
 
@@ -825,8 +839,8 @@ class FordAssistantController:
         if await self._call("lock", "lock", "lock"):
             await self._notify(
                 "autolock",
-                f"{self.name} locked",
-                "Doors were left unlocked away from home, so Home Assistant locked them.",
+                self._t("autolock_title", name=self.name),
+                self._t("autolock_message"),
                 actions=["HONK"] if "honk" in self.entities else None,
             )
 
@@ -844,16 +858,19 @@ class FordAssistantController:
                 doors, plural = self._open_door_text()
                 await self._notify(
                     "door",
-                    f"🚪 {self.name} couldn't lock for the night",
-                    f"{doors} {'are' if plural else 'is'} open.",
+                    self._t("nightlock_failed_title", name=self.name),
+                    self._t(
+                        "door_is_open_many" if plural else "door_is_open_one",
+                        doors=doors,
+                    ),
                     time_sensitive=True,
                 )
             return
         if await self._call("lock", "lock", "lock"):
             await self._notify(
                 "nightlock",
-                f"{self.name} locked for the night",
-                "It was still unlocked, so Home Assistant locked it.",
+                self._t("nightlock_title", name=self.name),
+                self._t("nightlock_message"),
                 actions=["HONK"] if "honk" in self.entities else None,
             )
 
@@ -871,8 +888,8 @@ class FordAssistantController:
         ):
             return
         if await self._call("switch", "turn_on", "remote_start"):
-            title = f"{self.name} is warming up"
-            message = f"{self._temp_text()}Remote started."
+            title = self._t("warming_title", name=self.name)
+            message = self._t("remote_started", temp=self._temp_text())
             if self._activity_enabled() or self.features["status_activity"]:
                 # A Live Activity shows it instead.
                 self._record("start", title, message)
@@ -891,8 +908,8 @@ class FordAssistantController:
             return
         await self._notify(
             "start",
-            f"Start the {self.name}?",
-            f"{self._temp_text()}Tap Start to remote start before you head out.",
+            self._t("work_title", name=self.name),
+            self._t("work_message", temp=self._temp_text()),
             actions=["START"],
         )
 
@@ -970,15 +987,15 @@ class FordAssistantController:
             else None
         )
         temp = self._number("temperature")
-        parts = ["Remote start running"]
+        parts = [self._t("running_header")]
         if temp is not None:
-            parts.append(f"{round(temp)}° outside")
+            parts.append(self._t("degrees_outside", temp=round(temp)))
         if minutes:
-            parts.append(f"{round(minutes)} min left")
+            parts.append(self._t("minutes_left", minutes=round(minutes)))
         data: dict[str, Any] = {
             "tag": self._activity_tag,
             "live_update": True,
-            "critical_text": "Running",
+            "critical_text": self._t("running"),
             "notification_icon": "mdi:car-key",
             "notification_icon_color": ACTIVITY_COLOR,
             "color": ACTIVITY_COLOR,
@@ -1049,7 +1066,7 @@ class FordAssistantController:
 
     async def _extend(self) -> None:
         if await self._call("button", "press", "extend"):
-            self._record("extend", f"{self.name} remote start extended")
+            self._record("extend", self._t("extended", name=self.name))
 
     # ---------------------------------------------------------------- alerts
 
@@ -1076,8 +1093,8 @@ class FordAssistantController:
         self.hass.async_create_task(
             self._notify(
                 "alarm",
-                f"🚨 {self.name} alarm",
-                f"Alarm status: {new.state}",
+                self._t("alarm_title", name=self.name),
+                self._t("alarm_message", state=new.state),
                 actions=actions,
                 critical=True,
             )
@@ -1122,8 +1139,8 @@ class FordAssistantController:
         self._latch("windows", (True, True))
         await self._notify(
             "windows",
-            f"{self.name} windows are open",
-            "Rain is expected in the next few hours.",
+            self._t("windows_title", name=self.name),
+            self._t("rain_message"),
         )
 
     @callback
@@ -1144,14 +1161,16 @@ class FordAssistantController:
         if level is None:
             return
         extra = (
-            f" (about {round(energy_range)} range)" if energy_range is not None else ""
+            self._t("about_range", range=round(energy_range))
+            if energy_range is not None
+            else ""
         )
-        title = (
-            f"⛽ {self.name} fuel is low"
-            if source == "fuel"
-            else f"🔋 {self.name} battery is low"
+        title = self._t(
+            "fuel_title" if source == "fuel" else "battery_low_title", name=self.name
         )
-        await self._notify("fuel", title, f"{round(level)}% left{extra}.")
+        await self._notify(
+            "fuel", title, self._t("level_left", level=round(level), extra=extra)
+        )
 
     @callback
     def _on_oil(self, event: Event[EventStateChangedData]) -> None:
@@ -1169,15 +1188,15 @@ class FordAssistantController:
     async def _oil_notification(self, oil: float | None) -> None:
         await self._notify(
             "oil",
-            f"🛢️ {self.name} oil change due",
-            f"Oil life is at {round(oil or 0)}%.",
+            self._t("oil_title", name=self.name),
+            self._t("oil_message", oil=round(oil or 0)),
         )
         if todo := self.options.get(CONF_TODO):
             try:
                 await self.hass.services.async_call(
                     "todo",
                     "add_item",
-                    {"item": f"Oil change – {self.name}"},
+                    {"item": self._t("oil_todo", name=self.name)},
                     target={ATTR_ENTITY_ID: todo},
                     blocking=True,
                 )
@@ -1199,12 +1218,14 @@ class FordAssistantController:
         ):
             state = self._state("battery")
             volts = state.attributes.get("batteryVoltage") if state else None
-            extra = f" ({volts} V)" if volts is not None else ""
+            extra = self._t("volts", volts=volts) if volts is not None else ""
             self.hass.async_create_task(
                 self._notify(
                     "battery",
-                    f"🔋 {self.name} 12V battery low",
-                    f"{round(battery or 0)}%{extra}.",
+                    self._t("battery_12v_title", name=self.name),
+                    self._t(
+                        "battery_12v_message", level=round(battery or 0), extra=extra
+                    ),
                 )
             )
 
@@ -1222,8 +1243,12 @@ class FordAssistantController:
             self.hass.async_create_task(
                 self._notify(
                     "tires",
-                    f"🛞 {self.name} tire pressure",
-                    tire_summary(new.state, new.attributes),
+                    self._t("tires_title", name=self.name),
+                    tire_summary(
+                        new.state,
+                        new.attributes,
+                        {pos: self._t(f"tire_{pos}") for pos in TIRE_POSITIONS},
+                    ),
                 )
             )
 
@@ -1244,8 +1269,8 @@ class FordAssistantController:
             self.hass.async_create_task(
                 self._notify(
                     "indicators",
-                    f"⚠️ {self.name} warning light",
-                    ", ".join(lights) or "A dashboard warning light is on.",
+                    self._t("warning_title", name=self.name),
+                    ", ".join(lights) or self._t("warning_message"),
                 )
             )
 
@@ -1319,15 +1344,13 @@ class FordAssistantController:
             )
             return
         context = Context()
-        self._log_activity(
-            garage, f"opened the garage because the {self.name} arrived home", context
-        )
+        self._log_activity(garage, self._t("garage_open_log", name=self.name), context)
         if await self._call("cover", "open_cover", garage, context):
             self._garage_opened_at = dt_util.utcnow()
             self._record(
                 "garage_open",
-                f"Garage opened for the {self.name}",
-                f"Ford Assistant opened the garage because the {self.name} arrived home.",
+                self._t("garage_open_title", name=self.name),
+                self._t("garage_open_message", name=self.name),
             )
 
     async def _check_garage_close(self) -> None:
@@ -1341,14 +1364,12 @@ class FordAssistantController:
         ):
             return
         context = Context()
-        self._log_activity(
-            garage, f"closed the garage because the {self.name} is parked", context
-        )
+        self._log_activity(garage, self._t("garage_close_log", name=self.name), context)
         if await self._call("cover", "close_cover", garage, context):
             await self._notify(
                 "garage",
-                "Garage closed",
-                f"The {self.name} is parked, so the garage door was closed.",
+                self._t("garage_closed_title"),
+                self._t("garage_closed_message", name=self.name),
             )
 
     # ------------------------------------------------------------ EV / PHEV
@@ -1362,11 +1383,11 @@ class FordAssistantController:
             to_float(state.attributes.get("batteryRange")) if state else None
         )
         extra = (
-            f" (about {round(battery_range)} range)"
+            self._t("about_range", range=round(battery_range))
             if battery_range is not None
             else ""
         )
-        return f"Battery is at {round(soc)}%{extra}."
+        return self._t("battery_text", soc=round(soc), extra=extra)
 
     async def _plug_in_reminder(self) -> None:
         if not (self.features["plug_in_reminder"] and self.is_electric):
@@ -1380,7 +1401,7 @@ class FordAssistantController:
         ):
             return
         await self._notify(
-            "plugin", f"🔌 Plug in the {self.name}?", self._battery_text()
+            "plugin", self._t("plugin_title", name=self.name), self._battery_text()
         )
 
     @callback
@@ -1406,11 +1427,11 @@ class FordAssistantController:
             self.hass.async_create_task(
                 self._notify(
                     "charge",
-                    f"⚠️ {self.name} charging stopped",
-                    (
-                        "The charger wasn't detected."
+                    self._t("charge_stopped_title", name=self.name),
+                    self._t(
+                        "charger_not_detected"
                         if new.state == "STATION_NOT_DETECTED"
-                        else "The charger reported a fault."
+                        else "charger_fault"
                     )
                     + (f" {self._battery_text()}" if self._battery_text() else ""),
                     time_sensitive=True,
@@ -1420,8 +1441,8 @@ class FordAssistantController:
             self.hass.async_create_task(
                 self._notify(
                     "charge",
-                    f"🔋 {self.name} finished charging",
-                    self._battery_text() or "Charging is complete.",
+                    self._t("charged_title", name=self.name),
+                    self._battery_text() or self._t("charged_message"),
                 )
             )
 
@@ -1449,7 +1470,12 @@ class FordAssistantController:
     ) -> None:
         if await self._call(domain, service, role):
             self._record(
-                f"command_{command.lower()}", f"{command.title()} sent to {self.name}"
+                f"command_{command.lower()}",
+                self._t(
+                    "command_sent",
+                    command=self._t(f"action_{command.lower()}"),
+                    name=self.name,
+                ),
             )
 
     # ------------------------------------------------------------- reload

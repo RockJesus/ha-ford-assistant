@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from datetime import time
 import re
 from typing import Any
@@ -121,7 +121,9 @@ def active_indicators(attributes: Mapping[str, Any]) -> list[str]:
     return names
 
 
-def open_doors(attributes: Mapping[str, Any]) -> list[str]:
+def open_doors(
+    attributes: Mapping[str, Any], name: Callable[[str], str] | None = None
+) -> list[str]:
     """Readable names of the doors (and hood) that are open.
 
     Only door values count (upper-case states like OPEN or AJAR); Home
@@ -129,7 +131,7 @@ def open_doors(attributes: Mapping[str, Any]) -> list[str]:
     """
     closed = {"CLOSED", "INVALID", "UNKNOWN", "UNSUPPORTED"}
     return [
-        humanize(key)
+        (name or humanize)(key)
         for key, value in attributes.items()
         if isinstance(value, str)
         and re.fullmatch(r"[A-Z_]+", value)
@@ -143,15 +145,20 @@ def humanize(key: str) -> str:
     return words[:1].upper() + words[1:]
 
 
-def tire_summary(state: str, attributes: Mapping[str, Any]) -> str:
+def tire_summary(
+    state: str,
+    attributes: Mapping[str, Any],
+    labels: Mapping[str, str] | None = None,
+) -> str:
     """Describe tire pressures, flagging any wheel that isn't normal."""
+    labels = labels or TIRE_LABELS
     parts: list[str] = []
     for pos in TIRE_POSITIONS:
         pressure = attributes.get(pos)
         wheel_state = attributes.get(f"{pos}_state")
         if pressure is None and wheel_state is None:
             continue
-        text = f"{TIRE_LABELS[pos]}: {pressure if pressure is not None else '?'}"
+        text = f"{labels[pos]}: {pressure if pressure is not None else '?'}"
         if wheel_state not in (None, "NORMAL"):
             text += f" ⚠️ {humanize_enum(wheel_state)}"
         parts.append(text)
