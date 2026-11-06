@@ -9,6 +9,11 @@
 
 const STORAGE_KEY = "ford-assistant-panel:vehicle";
 const PENDING_TIMEOUT = 45000; // Ford commands can take 30+ seconds
+// Locking waits for the vehicle to report back, which can take longer.
+const LOCK_TIMEOUT = 90000;
+// What the lock reports once a command has really finished.
+const LOCK_DONE = { lock: "locked", unlock: "unlocked" };
+const PENDING_LABELS = { lock: "Locking…", unlock: "Unlocking…" };
 const BAD = new Set(["unknown", "unavailable", "", null, undefined]);
 
 const FEATURE_GROUPS = [
@@ -353,7 +358,14 @@ class FordAssistantPanel extends HTMLElement {
     const doorsOpen = this._value(f.doors) === "Open";
     const lock = this._value(f.lock);
     const home = this._atHome(v);
+    // Tapped Lock or Unlock and the vehicle hasn't confirmed yet. The Ford
+    // integration also reports "locking"/"unlocking" while it sends one.
+    const locking = this._pendingFor(v, "lock") || lock === "locking";
+    const unlocking = this._pendingFor(v, "unlock") || lock === "unlocking";
     if (alarmGoing) return { text: "Alarm!", tone: "error", icon: "mdi:alarm-light" };
+    if (locking) return { text: "Locking…", tone: "info", icon: "mdi:lock-clock" };
+    if (unlocking) return { text: "Unlocking…", tone: "info", icon: "mdi:lock-clock" };
+    if (lock === "jammed") return { text: "Lock jammed", tone: "error", icon: "mdi:lock-alert" };
     if (running) return { text: "Running", tone: "info", icon: "mdi:engine" };
     if (driving) return { text: "Driving", tone: "info", icon: "mdi:steering" };
     if (doorsOpen) return { text: "Door open", tone: "error", icon: "mdi:car-door" };
@@ -448,10 +460,16 @@ class FordAssistantPanel extends HTMLElement {
     const items = [];
     const lock = this._value(f.lock);
     if (f.lock) {
+      // While the vehicle is locking or unlocking, wait for it.
+      const busy = BAD.has(lock) || lock === "locking" || lock === "unlocking";
       items.push(
-        lock === "locked"
-          ? this._action("unlock", "mdi:lock-open-variant", "Unlock", BAD.has(lock))
-          : this._action("lock", "mdi:lock", "Lock", BAD.has(lock)),
+        lock === "locking"
+          ? this._action("lock", "mdi:lock-clock", "Locking…", true)
+          : lock === "unlocking"
+            ? this._action("unlock", "mdi:lock-clock", "Unlocking…", true)
+            : lock === "locked"
+              ? this._action("unlock", "mdi:lock-open-variant", "Unlock", busy)
+              : this._action("lock", "mdi:lock", "Lock", busy),
       );
     }
     if (f.remote_start) {
@@ -483,6 +501,11 @@ class FordAssistantPanel extends HTMLElement {
     return items.join("");
   }
 
+  _pendingFor(v, action) {
+    const pending = this._pending.get(action);
+    return !!pending && pending.watch === v.ford[action === "unlock" ? "lock" : action];
+  }
+
   _usable(entityId) {
     const state = this._state(entityId);
     return !!state && state.state !== "unavailable";
@@ -495,7 +518,7 @@ class FordAssistantPanel extends HTMLElement {
       <span class="action-icon">${
         pending ? `<span class="spinner" aria-hidden="true"></span>` : `<ha-icon icon="${icon}"></ha-icon>`
       }</span>
-      <span class="action-label">${esc(pending ? "Sending…" : label)}</span>
+      <span class="action-label">${esc(pending ? PENDING_LABELS[action] || "Sending…" : label)}</span>
     </button>`;
   }
 
@@ -882,8 +905,8 @@ class FordAssistantPanel extends HTMLElement {
     const timer = setTimeout(() => {
       this._pending.delete(action);
       this._render(true);
-    }, PENDING_TIMEOUT);
-    this._pending.set(action, { timer, watch, from });
+    }, LOCK_DONE[action] ? LOCK_TIMEOUT : PENDING_TIMEOUT);
+    this._pending.set(action, { timer, watch, from, until: LOCK_DONE[action] });
     this._render(true);
     Promise.resolve(this._hass.callService(domain, service, { entity_id: entityId })).catch((err) => {
       clearTimeout(timer);
@@ -895,9 +918,13 @@ class FordAssistantPanel extends HTMLElement {
 
   _resolvePending() {
     // A command is done once the entity it affects reports a new state.
+    // Lock and unlock wait for the lock to say locked or unlocked: on the
+    // way it reports "locking", and then briefly its old state until the
+    // vehicle answers.
     for (const [action, pending] of this._pending) {
       const state = this._state(pending.watch);
-      if (state && state.last_updated !== pending.from) {
+      const done = pending.until ? state && state.state === pending.until : state && state.last_updated !== pending.from;
+      if (done) {
         clearTimeout(pending.timer);
         this._pending.delete(action);
       }

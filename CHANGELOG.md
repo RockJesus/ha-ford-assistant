@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.2] - 2026-11-06
+
+### Fixed
+
+- **Locking… and Unlocking… on the vehicle card.** After you tap **Lock** or **Unlock**, the card and the button say **Locking…** or **Unlocking…** until the vehicle confirms it, instead of the lock status disappearing and coming back later ([#5](https://github.com/bisman-automations/ha-ford-assistant/issues/5)). The same shows when the vehicle is locked or unlocked from somewhere else, such as the Ford app, and a jammed lock now shows as **Lock jammed**.
+
 ## [1.6.1] - 2026-10-30
 
 ### Changed
@@ -102,6 +108,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Actionable notifications with Lock, Honk & Flash, Start and Stop buttons.
 - Feature switches, number and time settings on the vehicle's device, a last-event sensor, a `ford_assistant_alert` event, a repair issue for missing Ford entities, and diagnostics.
 
+[1.6.2]: https://github.com/bisman-automations/ha-ford-assistant/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/bisman-automations/ha-ford-assistant/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/bisman-automations/ha-ford-assistant/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/bisman-automations/ha-ford-assistant/compare/v1.4.1...v1.5.0

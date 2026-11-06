@@ -113,7 +113,7 @@ When you add Ford Assistant, it looks for a **FordPass – Vehicle Assistant** b
 
 Ford Assistant adds a **Ford Assistant** page to the Home Assistant sidebar as soon as a vehicle is set up. There's nothing to configure.
 
-- **Your vehicle** front and center, using the picture from the Ford integration (recent versions; older ones show a placeholder), with a status chip: Locked, Unlocked, Door open, Running, Driving or Alarm.
+- **Your vehicle** front and center, using the picture from the Ford integration (recent versions; older ones show a placeholder), with a status chip: Locked, Unlocked, Locking…, Unlocking…, Lock jammed, Door open, Running, Driving or Alarm. After you tap **Lock** or **Unlock** it says **Locking…** or **Unlocking…** until the vehicle confirms it (up to 90 seconds).
 - **Controls**: Lock or Unlock, remote Start or Stop (and Extend while running), Honk & Flash, the garage door if you've set one, and Refresh. Unlock, Start and opening the garage ask you to confirm first. A button shows "Sending…" until the vehicle reports back, since Ford commands can take a while.
 - **Status tiles**: fuel or battery with range, charging, remote start time left, doors, windows, location, tire pressures, oil life, 12V battery, alarm, warning lights, outside temperature and odometer. Tiles turn amber or red when something needs attention, and tapping one opens its details.
 - **Ford Assistant features**, grouped by Security, Remote start, Alerts, Garage and Notifications, each with an on/off switch, plus a shortcut to the thresholds and times.
