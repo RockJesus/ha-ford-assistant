@@ -55,6 +55,17 @@
     "step": {
       "init": {
         "title": "Options de Ford Assistant",
+        "description": "Téléphones et lieux, qui conduit dans le foyer, et ce que les modes Service et Invité ont le droit de faire.",
+        "menu_options": {
+          "settings": "Téléphones, lieux et horaires",
+          "household_drivers": "Conducteurs du foyer",
+          "service_mode": "Mode Service",
+          "guest_mode": "Mode Invité"
+        }
+      },
+      "settings": {
+        "title": "Téléphones, lieux et horaires",
+        "description": "Qui reçoit les notifications, quels lieux comptent, et quels jours les fonctions programmées s'exécutent.",
         "data": {
           "notify_devices": "Appareils à notifier",
           "phone_tracker": "Votre téléphone",
@@ -68,7 +79,7 @@
           "alarm_normal_states": "États normaux de l'alarme"
         },
         "data_description": {
-          "notify_devices": "Téléphones qui reçoivent les notifications avec les boutons Verrouiller, Klaxon, Démarrer et Arrêter.",
+          "notify_devices": "Téléphones qui reçoivent les notifications avec les boutons Verrouiller, Klaxon, Démarrer et Arrêter. Un conducteur du foyer peut utiliser ses propres téléphones à la place.",
           "phone_tracker": "Facultatif. Le verrouillage automatique attend que ce téléphone soit loin du véhicule.",
           "home_zone": "Le verrouillage automatique ne fonctionne qu'en dehors de cette zone ; le préconditionnement et le garage ne fonctionnent qu'à l'intérieur.",
           "work_zone": "Facultatif. Sert au rappel de démarrage en quittant le travail et au rappel de carburant bas.",
@@ -76,6 +87,58 @@
           "todo_entity": "Facultatif. Une tâche de vidange est ajoutée quand la durée de vie de l'huile est basse.",
           "garage_cover": "Facultatif. S'ouvre quand vous arrivez à la maison et se ferme une fois garé.",
           "alarm_normal_states": "Tout autre état de l'alarme envoie une notification critique."
+        }
+      },
+      "household_drivers": {
+        "title": "Conducteurs du foyer",
+        "description": "Personnes dans Home Assistant qui conduisent ce véhicule. Quand Qui conduit est sur Foyer et que l'une d'elles est le conducteur actif, seules ses alertes, ses téléphones et ses actions sont utilisés. Chaque personne liée à un compte Home Assistant peut aussi ouvrir le tableau de bord Ford Assistant.",
+        "data": {
+          "household_drivers": "Conducteurs du foyer"
+        },
+        "data_description": {
+          "household_drivers": "Seules ces personnes peuvent être choisies comme conducteur actif. Laissez vide pour garder le comportement actuel : chaque fonction suit son propre interrupteur, et l'accès au tableau de bord reste aux administrateurs et aux personnes qu'un administrateur a cochées."
+        }
+      },
+      "driver_profile": {
+        "title": "Profil du conducteur",
+        "description": "Alertes, téléphones et actions pour {person}. Ils ne s'appliquent que lorsque cette personne est le conducteur actif. Les alertes décochées sont ignorées, les téléphones laissés vides utilisent ceux du véhicule, et les actions décochées ne s'exécutent pas même si leur interrupteur est activé.",
+        "data": {
+          "alerts": "Alertes reçues",
+          "notify_devices": "Ses téléphones",
+          "actions": "Actions activées pour cette personne"
+        },
+        "data_description": {
+          "alerts": "Les alertes cochées sont envoyées tant que cette personne est le conducteur actif.",
+          "notify_devices": "Facultatif. Laissez vide pour utiliser les téléphones choisis pour le véhicule.",
+          "actions": "Les actions décochées sont bloquées tant que cette personne est le conducteur actif. Les interrupteurs des fonctions ne changent pas."
+        }
+      },
+      "service_mode": {
+        "title": "Mode Service",
+        "description": "Pour un passage à l'atelier, une vidange, ou chaque fois que le véhicule est en entretien. Les alertes cochées sont toujours envoyées. Les actions cochées restent autorisées ; tout le reste de ce que Ford Assistant ferait est bloqué. Il peut revenir tout seul au mode Foyer après la durée que vous indiquez.",
+        "data": {
+          "service_alerts": "Alertes à conserver",
+          "service_actions": "Actions à autoriser",
+          "service_revert": "Revenir au mode Foyer après"
+        },
+        "data_description": {
+          "service_alerts": "Les alertes décochées ne sont pas envoyées tant que le mode Service est actif. Par défaut, toutes les alertes restent actives.",
+          "service_actions": "Les actions décochées sont bloquées, y compris le verrouillage automatique, le démarrage à distance et le garage. Par défaut, toutes les actions sont bloquées. Demander un état à jour au véhicule n'est jamais bloqué.",
+          "service_revert": "Facultatif. Laissez vide pour rester en mode Service jusqu'à ce que quelqu'un le change. Le compte à rebours survit à un redémarrage."
+        }
+      },
+      "guest_mode": {
+        "title": "Mode Invité",
+        "description": "Pour un véhicule emprunté ou prêté, ou tout conducteur qui n'est pas une personne du foyer. Les alertes cochées sont toujours envoyées. Les actions cochées restent autorisées. Il peut revenir tout seul au mode Foyer après la durée que vous indiquez.",
+        "data": {
+          "guest_alerts": "Alertes à conserver",
+          "guest_actions": "Actions à autoriser",
+          "guest_revert": "Revenir au mode Foyer après"
+        },
+        "data_description": {
+          "guest_alerts": "Par défaut, les alertes de sécurité et l'activité en direct de l'état du véhicule restent actives. La durée de vie de l'huile, le rappel de branchement et l'activité en direct du démarrage à distance restent désactivés.",
+          "guest_actions": "Par défaut, la voiture peut encore être verrouillée, déverrouillée, klaxonnée et verrouillée automatiquement. Le verrouillage de nuit, le démarrage à distance, les routines du matin et de fin de journée, et le garage sont bloqués.",
+          "guest_revert": "Facultatif. Laissez vide pour rester en mode Invité jusqu'à ce que quelqu'un le change. Le compte à rebours survit à un redémarrage."
         }
       }
     }
@@ -95,6 +158,44 @@
     "import_choice": {
       "options": {
         "skip": "Ne rien copier, repartir de zéro"
+      }
+    },
+    "driving_mode": {
+      "options": {
+        "household": "Foyer",
+        "service": "Service",
+        "guest": "Invité"
+      }
+    },
+    "driving_alert": {
+      "options": {
+        "alarm": "Alarme",
+        "windows": "Fenêtres ouvertes sous la pluie",
+        "fuel": "Carburant bas",
+        "oil": "Durée de vie de l'huile",
+        "battery": "Batterie 12 V",
+        "tires": "Pression des pneus",
+        "indicators": "Voyants",
+        "door": "Porte laissée ouverte",
+        "plugin": "Rappel de branchement",
+        "charge": "Recharge",
+        "status_activity": "Activité en direct de l'état du véhicule",
+        "remote_start_activity": "Activité en direct du démarrage à distance"
+      }
+    },
+    "driving_action": {
+      "options": {
+        "auto_lock": "Verrouillage automatique hors de la maison",
+        "night_lock": "Verrouillage de nuit",
+        "lock": "Verrouiller",
+        "unlock": "Déverrouiller",
+        "honk": "Klaxon et feux",
+        "precondition": "Préconditionnement du matin",
+        "work_prompt": "Rappel de démarrage en quittant le travail",
+        "auto_extend": "Prolongation automatique du démarrage à distance",
+        "remote_start": "Démarrage, arrêt et prolongation à distance",
+        "garage_open": "Ouvrir le garage à l'arrivée",
+        "garage_close": "Fermer le garage une fois garé"
       }
     }
   },
@@ -225,6 +326,64 @@
     "sensor": {
       "last_event": {
         "name": "Dernier événement de l'assistant"
+      },
+      "driving_status": {
+        "name": "État de conduite",
+        "state": {
+          "household": "Foyer",
+          "service": "Service",
+          "guest": "Invité"
+        },
+        "state_attributes": {
+          "mode": { "name": "Mode" },
+          "active_driver": { "name": "Conducteur actif" },
+          "active_driver_name": { "name": "Nom du conducteur actif" },
+          "manual_driver": { "name": "Choisi à la main" },
+          "allowed_actions": { "name": "Actions autorisées" },
+          "blocked_actions": { "name": "Actions bloquées" },
+          "kept_alerts": { "name": "Alertes conservées" },
+          "dropped_alerts": { "name": "Alertes ignorées" },
+          "automations_suppressed": { "name": "Automatisations suspendues" },
+          "revert_at": { "name": "Retour au mode Foyer" }
+        }
+      }
+    },
+    "select": {
+      "driving_mode": {
+        "name": "Qui conduit",
+        "state": {
+          "household": "Foyer",
+          "service": "Service",
+          "guest": "Invité"
+        },
+        "state_attributes": {
+          "mode": { "name": "Mode" },
+          "active_driver": { "name": "Conducteur actif" },
+          "active_driver_name": { "name": "Nom du conducteur actif" },
+          "manual_driver": { "name": "Choisi à la main" },
+          "allowed_actions": { "name": "Actions autorisées" },
+          "blocked_actions": { "name": "Actions bloquées" },
+          "kept_alerts": { "name": "Alertes conservées" },
+          "dropped_alerts": { "name": "Alertes ignorées" },
+          "automations_suppressed": { "name": "Automatisations suspendues" },
+          "revert_at": { "name": "Retour au mode Foyer" }
+        }
+      },
+      "active_driver": {
+        "name": "Conducteur actif",
+        "state": {
+          "none": "Personne"
+        },
+        "state_attributes": {
+          "manual_driver": { "name": "Choisi à la main" },
+          "active_driver_name": { "name": "Nom du conducteur actif" },
+          "in_effect": { "name": "En vigueur" }
+        }
+      }
+    },
+    "binary_sensor": {
+      "automations_suppressed": {
+        "name": "Automatisations suspendues"
       }
     }
   },
@@ -233,7 +392,36 @@
       "message": "La serrure de porte ou le suivi du véhicule {vin} de l'intégration Ford n'est pas encore disponible."
     },
     "not_allowed": {
-      "message": "Vous n'avez pas accès à Ford Assistant. Un administrateur peut vous donner accès dans le tableau de bord Ford Assistant."
+      "message": "Vous n'avez pas accès à Ford Assistant. Un administrateur peut vous donner accès dans le tableau de bord Ford Assistant, ou ajouter votre personne comme conducteur du foyer."
+    },
+    "unknown_driver": {
+      "message": "{driver} n'est pas un conducteur du foyer admissible pour ce véhicule."
+    },
+    "unknown_mode": {
+      "message": "{mode} n'est pas un mode de conduite. Utilisez household, service ou guest."
+    },
+    "no_vehicle": {
+      "message": "Choisissez un véhicule pour lequel Ford Assistant est configuré."
+    }
+  },
+  "services": {
+    "set_driving_mode": {
+      "name": "Définir qui conduit",
+      "description": "Définit le mode Foyer, Service ou Invité pour un véhicule. Service et Invité peuvent revenir au mode Foyer après une durée. Vous pouvez aussi nommer le conducteur actif du foyer.",
+      "fields": {
+        "mode": {
+          "name": "Mode",
+          "description": "Foyer est la conduite de tous les jours. Service est un passage à l'atelier. Invité est toute autre personne qui a le véhicule."
+        },
+        "duration": {
+          "name": "Revenir au mode Foyer après",
+          "description": "Combien de temps rester en mode Service ou Invité. Laissez vide pour utiliser la durée des options du véhicule. Mettez 0 pour rester jusqu'à ce que quelqu'un change le mode."
+        },
+        "active_driver": {
+          "name": "Conducteur actif",
+          "description": "Un conducteur du foyer choisi dans les options, ou omettez pour laisser le conducteur actuel. C'est un choix manuel jusqu'à ce que le véhicule soit garé à la maison."
+        }
+      }
     }
   },
   "issues": {

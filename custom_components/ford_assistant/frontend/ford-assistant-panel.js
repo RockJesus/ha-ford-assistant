@@ -15,6 +15,17 @@ const LOCK_TIMEOUT = 90000;
 const LOCK_DONE = { lock: "locked", unlock: "unlocked" };
 const PENDING_LABELS = { lock: "locking", unlock: "unlocking" };
 const BAD = new Set(["unknown", "unavailable", "", null, undefined]);
+// Dashboard buttons and the action the current driving mode can block.
+const ACTION_BLOCKS = {
+  lock: "lock",
+  unlock: "unlock",
+  start: "remote_start",
+  stop: "remote_start",
+  extend: "remote_start",
+  honk: "honk",
+  garage_open: "garage_open",
+  garage_close: "garage_close",
+};
 
 const FEATURE_GROUPS = [
   { title: "security", keys: ["auto_lock", "night_lock", "door_open_alert", "alarm_alert"] },
@@ -61,10 +72,18 @@ const WORDS = {
     denied_title: "You don't have access to Ford Assistant",
     denied_text: "Ask an admin to give you access. They can do it at the bottom of this dashboard.",
     access_title: "Who can use Ford Assistant",
-    access_text: "Admins always can. The dashboard shows where the vehicle is and can unlock and start it, so anyone else only sees it if you check them here.",
+    access_text: "Admins always can. So can a household driver whose person is linked to their Home Assistant user. Anyone else only sees it if you check them here.",
     access_all_admins: "Everyone with a Home Assistant login is an admin.",
     access_sidebar: "Home Assistant can't show a sidebar entry to only some people, so everyone sees Ford Assistant in the sidebar. People who aren't checked get a page saying they don't have access.",
     access_saved: "Access saved",
+    whos_driving: "Who's driving",
+    mode_household: "Household",
+    mode_service: "Service",
+    mode_guest: "Guest",
+    nobody: "Nobody",
+    automations_suppressed: "Ford Assistant is holding some actions for this mode.",
+    reverts_at: "Back to Household at {time}",
+    action_blocked: "That action is blocked while this mode is on.",
     // Status
     alarm_going: "Alarm!",
     locking: "Locking…",
@@ -163,10 +182,18 @@ const WORDS = {
     denied_title: "Vous n'avez pas accès à Ford Assistant",
     denied_text: "Demandez l'accès à un administrateur. Il peut le donner en bas de ce tableau de bord.",
     access_title: "Qui peut utiliser Ford Assistant",
-    access_text: "Les administrateurs le peuvent toujours. Le tableau de bord montre où se trouve le véhicule et peut le déverrouiller et le démarrer : les autres ne le voient que si vous les cochez ici.",
+    access_text: "Les administrateurs le peuvent toujours, ainsi qu'un conducteur du foyer dont la personne est liée à son compte Home Assistant. Les autres ne le voient que si vous les cochez ici.",
     access_all_admins: "Toutes les personnes ayant un compte Home Assistant sont administrateurs.",
     access_sidebar: "Home Assistant ne peut pas afficher une entrée de la barre latérale pour certaines personnes seulement : tout le monde voit Ford Assistant dans la barre latérale. Les personnes non cochées voient une page indiquant qu'elles n'y ont pas accès.",
     access_saved: "Accès enregistré",
+    whos_driving: "Qui conduit",
+    mode_household: "Foyer",
+    mode_service: "Service",
+    mode_guest: "Invité",
+    nobody: "Personne",
+    automations_suppressed: "Ford Assistant retient certaines actions pour ce mode.",
+    reverts_at: "Retour au mode Foyer à {time}",
+    action_blocked: "Cette action est bloquée tant que ce mode est actif.",
     alarm_going: "Alarme !",
     locking: "Verrouillage…",
     unlocking: "Déverrouillage…",
@@ -629,6 +656,7 @@ class FordAssistantPanel extends HTMLElement {
           }
         </div>
       </section>
+      ${this._drivingCard(v)}
       <section class="actions">${this._actions(v)}</section>
       <section class="grid">${this._tiles(v)}</section>
       ${this._featuresView(v)}
@@ -673,9 +701,60 @@ class FordAssistantPanel extends HTMLElement {
     slot.appendChild(entry.img);
   }
 
+  _policy(v) {
+    const id = v.assistant.select && v.assistant.select.driving_mode;
+    const state = id && this._state(id);
+    if (!state || BAD.has(state.state)) {
+      return { mode: "household", blocked: [], driver: "", revert: "", suppressed: false };
+    }
+    const attrs = state.attributes || {};
+    return {
+      mode: state.state,
+      blocked: attrs.blocked_actions || [],
+      driver: attrs.active_driver_name || "",
+      revert: attrs.revert_at || "",
+      suppressed: !!attrs.automations_suppressed,
+    };
+  }
+
+  _blocked(v, action) {
+    const key = ACTION_BLOCKS[action];
+    return !!key && this._policy(v).blocked.includes(key);
+  }
+
+  _drivingCard(v) {
+    const policy = this._policy(v);
+    const mode = this._t("mode_" + (policy.mode || "household"));
+    const bits = [mode];
+    if ((policy.mode || "household") === "household") {
+      bits.push(policy.driver || this._t("nobody"));
+    }
+    let when = "";
+    if (policy.revert) {
+      const parsed = new Date(policy.revert);
+      when = Number.isNaN(parsed.getTime())
+        ? policy.revert
+        : parsed.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    }
+    const entity = v.assistant.select && v.assistant.select.driving_mode;
+    return `<section class="card driving">
+      <h2>${esc(this._t("whos_driving"))}</h2>
+      <p class="driving-mode">${esc(bits.join(" · "))}</p>
+      ${policy.suppressed ? `<p class="muted">${esc(this._t("automations_suppressed"))}</p>` : ""}
+      ${when ? `<p class="muted">${esc(this._t("reverts_at", { time: when }))}</p>` : ""}
+      ${
+        entity
+          ? `<button class="last-event" data-action="more-info" data-entity="${esc(entity)}">
+              <ha-icon icon="mdi:account-switch"></ha-icon><span>${esc(this._t("whos_driving"))}</span></button>`
+          : ""
+      }
+    </section>`;
+  }
+
   _actions(v) {
     const f = v.ford;
     const items = [];
+    const held = this._t("action_blocked");
     const lock = this._value(f.lock);
     if (f.lock) {
       // While the vehicle is locking or unlocking, wait for it.
@@ -686,31 +765,31 @@ class FordAssistantPanel extends HTMLElement {
           : lock === "unlocking"
             ? this._action("unlock", "mdi:lock-clock", this._t("unlocking"), true)
             : lock === "locked"
-              ? this._action("unlock", "mdi:lock-open-variant", this._t("unlock"), busy)
-              : this._action("lock", "mdi:lock", this._t("lock"), busy),
+              ? this._action("unlock", "mdi:lock-open-variant", this._t("unlock"), busy || this._blocked(v, "unlock"), "", this._blocked(v, "unlock") ? held : "")
+              : this._action("lock", "mdi:lock", this._t("lock"), busy || this._blocked(v, "lock"), "", this._blocked(v, "lock") ? held : ""),
       );
     }
     if (f.remote_start) {
       const running = this._value(f.remote_start) === "on";
       items.push(
         running
-          ? this._action("stop", "mdi:engine-off", this._t("stop"), false, "active")
-          : this._action("start", "mdi:engine", this._t("start"), BAD.has(this._value(f.remote_start))),
+          ? this._action("stop", "mdi:engine-off", this._t("stop"), this._blocked(v, "stop"), "active", this._blocked(v, "stop") ? held : "")
+          : this._action("start", "mdi:engine", this._t("start"), BAD.has(this._value(f.remote_start)) || this._blocked(v, "start"), "", this._blocked(v, "start") ? held : ""),
       );
       // Button entities stay "unknown" until first pressed, so only hide unavailable ones.
       if (running && f.extend && this._usable(f.extend)) {
-        items.push(this._action("extend", "mdi:timer-plus", this._t("extend")));
+        items.push(this._action("extend", "mdi:timer-plus", this._t("extend"), this._blocked(v, "extend"), "", this._blocked(v, "extend") ? held : ""));
       }
     }
     if (f.honk && this._usable(f.honk)) {
-      items.push(this._action("honk", "mdi:car-light-high", this._t("honk")));
+      items.push(this._action("honk", "mdi:car-light-high", this._t("honk"), this._blocked(v, "honk"), "", this._blocked(v, "honk") ? held : ""));
     }
     if (v.garage && this._state(v.garage)) {
       const garage = this._value(v.garage);
       items.push(
         garage === "open" || garage === "opening"
-          ? this._action("garage_close", "mdi:garage", this._t("garage_close"))
-          : this._action("garage_open", "mdi:garage-open", this._t("garage_open")),
+          ? this._action("garage_close", "mdi:garage", this._t("garage_close"), this._blocked(v, "garage_close"), "", this._blocked(v, "garage_close") ? held : "")
+          : this._action("garage_open", "mdi:garage-open", this._t("garage_open"), this._blocked(v, "garage_open"), "", this._blocked(v, "garage_open") ? held : ""),
       );
     }
     if (f.refresh && this._usable(f.refresh)) {
@@ -729,10 +808,10 @@ class FordAssistantPanel extends HTMLElement {
     return !!state && state.state !== "unavailable";
   }
 
-  _action(action, icon, label, disabled = false, extra = "") {
+  _action(action, icon, label, disabled = false, extra = "", title = "") {
     const pending = this._pending.has(action);
     return `<button class="action ${extra} ${pending ? "pending" : ""}" data-action="${action}"
-        ${disabled || pending ? "disabled" : ""} aria-label="${esc(label)}">
+        ${disabled || pending ? "disabled" : ""} aria-label="${esc(label)}"${title ? ` title="${esc(title)}"` : ""}>
       <span class="action-icon">${
         pending ? `<span class="spinner" aria-hidden="true"></span>` : `<ha-icon icon="${icon}"></ha-icon>`
       }</span>
@@ -1078,6 +1157,10 @@ class FordAssistantPanel extends HTMLElement {
   }
 
   _command(action, v) {
+    if (this._blocked(v, action)) {
+      this._toast(this._t("action_blocked"));
+      return;
+    }
     const confirms = {
       unlock: {
         title: this._t("confirm_unlock_title", { name: v.name }),
@@ -1104,6 +1187,10 @@ class FordAssistantPanel extends HTMLElement {
   }
 
   _run(action, v) {
+    if (this._blocked(v, action)) {
+      this._toast(this._t("action_blocked"));
+      return;
+    }
     const f = v.ford;
     const calls = {
       lock: ["lock", "lock", f.lock, f.lock],
@@ -1193,6 +1280,11 @@ const STYLES = `
     max-width: 1100px; margin: 0 auto;
   }
   .tabs[hidden] { display: none; }
+  .driving { padding: 16px; }
+  .driving h2 { margin: 0 0 8px; font-size: 20px; font-weight: 500; }
+  .driving p { margin: 0 0 8px; }
+  .driving .muted { color: var(--fa-muted); font-size: 14px; }
+  .driving .last-event { margin-top: 4px; }
   .access { padding: 16px; }
   .access h2 { margin: 0 0 8px; font-size: 20px; font-weight: 500; }
   .access p { margin: 8px 0; font-size: 14px; }

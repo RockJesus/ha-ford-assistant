@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
-from homeassistant.config_entries import ConfigEntry
+import voluptuous as vol
+
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.helpers import config_validation as cv, issue_registry as ir
+from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
+from homeassistant.helpers import config_validation as cv, issue_registry as ir, service
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
 
-from .access import async_get_access
-from .const import CONF_VIN, DOMAIN, REQUIRED_ROLES
+from .access import async_ensure_allowed, async_get_access
+from .const import CONF_VIN, DOMAIN, REQUIRED_ROLES, SERVICE_SET_DRIVING_MODE
 from .controller import FordAssistantController
+from .driving import ACTIVE_DRIVER_NONE, DRIVING_MODES, duration_config
 from .panel import (
     async_register_panel,
     async_setup_websocket,
@@ -20,7 +23,9 @@ from .panel import (
 )
 
 PLATFORMS: list[Platform] = [
+    Platform.BINARY_SENSOR,
     Platform.NUMBER,
+    Platform.SELECT,
     Platform.SENSOR,
     Platform.SWITCH,
     Platform.TIME,
@@ -32,10 +37,65 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up the dashboard's websocket API and who may use it."""
+    """Set up the dashboard's websocket API, access, and actions."""
     await async_get_access(hass)
     async_setup_websocket(hass)
+    await _async_register_services(hass)
     return True
+
+
+async def _async_register_services(hass: HomeAssistant) -> None:
+    """Register actions once per Home Assistant run."""
+    if hass.services.has_service(DOMAIN, SERVICE_SET_DRIVING_MODE):
+        return
+
+    async def async_set_driving_mode(call: ServiceCall) -> None:
+        """Set the mode, optionally for a fixed time, and the active driver."""
+        await async_ensure_allowed(hass, call.context)
+        entry_ids = await service.async_extract_config_entry_ids(call)
+        matched = [
+            entry
+            for entry_id in entry_ids
+            if (entry := hass.config_entries.async_get_entry(entry_id))
+            and entry.domain == DOMAIN
+            and entry.state is ConfigEntryState.LOADED
+        ]
+        if not matched:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="no_vehicle"
+            )
+        use_duration = "duration" in call.data
+        update_driver = "active_driver" in call.data
+        driver = call.data.get("active_driver")
+        for entry in matched:
+            controller = entry.runtime_data
+            if update_driver:
+                controller.set_active_driver(
+                    None if driver in (None, "", ACTIVE_DRIVER_NONE) else driver,
+                    manual=True,
+                    reason="service",
+                )
+            controller.set_driving_mode(
+                call.data["mode"],
+                duration=call.data.get("duration"),
+                use_duration=use_duration,
+                reason="service",
+            )
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SET_DRIVING_MODE,
+        async_set_driving_mode,
+        schema=cv.make_entity_service_schema(
+            {
+                vol.Required("mode"): vol.In(DRIVING_MODES),
+                vol.Optional("duration"): duration_config,
+                vol.Optional("active_driver"): vol.Any(
+                    ACTIVE_DRIVER_NONE, cv.entity_id
+                ),
+            }
+        ),
+    )
 
 
 async def async_setup_entry(
@@ -71,7 +131,9 @@ async def async_setup_entry(
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     controller.async_start()
     entry.async_on_unload(controller.async_stop)
-    await async_register_panel(hass, controller.version)
+    # Re-check who may see the sidebar: a household driver who isn't an admin
+    # means the panel can no longer stay admin-only.
+    await async_register_panel(hass, controller.version, update=True)
     return True
 
 

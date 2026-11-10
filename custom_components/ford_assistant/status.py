@@ -89,7 +89,11 @@ class StatusActivity:
     @property
     def enabled(self) -> bool:
         """Whether the status activity should be showing."""
-        return self.c.features["status_activity"] and bool(self.c._notify_services())
+        return (
+            self.c.features["status_activity"]
+            and self.c.keeps_alert("status_activity")
+            and bool(self.c._notify_services())
+        )
 
     # ---------------------------------------------------------------- life
 
@@ -137,7 +141,7 @@ class StatusActivity:
 
     @callback
     def _on_change(self, event: Event[EventStateChangedData]) -> None:
-        if not self.c.features["status_activity"]:
+        if not self.enabled:
             return
         if self._debounce:
             self._debounce()
@@ -339,8 +343,8 @@ class StatusActivity:
             commands.append("LOCK")
         if "remote_start" in c.entities:
             commands.append("STOP" if view.running else "START")
-        if commands:
-            data["actions"] = c._actions(commands)
+        if commands and (built := c._actions(commands)):
+            data["actions"] = built
         if url := c._tap_url():
             data["url"] = url
             data["clickAction"] = url

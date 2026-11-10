@@ -164,7 +164,12 @@ def vehicle_summary(hass: HomeAssistant, entry) -> dict[str, Any]:
         return found
 
     vehicle = ford_device(hass, vin)
-    last_event = _ours(registry, "sensor", vin, "last_event")
+    sensors = {
+        key: entity_id
+        for key in ("last_event", "driving_status")
+        if (entity_id := _ours(registry, "sensor", vin, key))
+    }
+    last_event = sensors.get("last_event")
     assistant_device = None
     if last_event and (reg_entry := registry.async_get(last_event)):
         assistant_device = reg_entry.device_id
@@ -184,7 +189,11 @@ def vehicle_summary(hass: HomeAssistant, entry) -> dict[str, Any]:
             "switch": assistant("switch", FEATURES, EV_FEATURES),
             "number": assistant("number", NUMBERS, EV_NUMBERS),
             "time": assistant("time", TIMES, EV_TIMES),
-            "sensor": {"last_event": last_event} if last_event else {},
+            "select": assistant("select", ("driving_mode", "active_driver"), ()),
+            "sensor": sensors,
+            "binary_sensor": assistant(
+                "binary_sensor", ("automations_suppressed",), ()
+            ),
         },
     }
 

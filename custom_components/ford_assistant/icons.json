@@ -126,6 +126,22 @@
     "sensor": {
       "last_event": {
         "default": "mdi:car-info"
+      },
+      "driving_status": {
+        "default": "mdi:steering"
+      }
+    },
+    "select": {
+      "driving_mode": {
+        "default": "mdi:account-switch"
+      },
+      "active_driver": {
+        "default": "mdi:account-key"
+      }
+    },
+    "binary_sensor": {
+      "automations_suppressed": {
+        "default": "mdi:robot-off"
       }
     }
   }

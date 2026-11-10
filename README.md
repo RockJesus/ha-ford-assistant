@@ -26,6 +26,7 @@ A companion to the [Ford integration](https://github.com/marq24/ha-fordpass) for
 - **Garage door.** Opens when the vehicle arrives home and closes a while after you park. It only opens for an arrival reported while you're still driving: not when Home Assistant or Ford Assistant has just started, not when the vehicle is already parked by the time its location catches up, and not when the door was opened or closed in the last 10 minutes. Each time Ford Assistant opens or closes the door, the garage door's **Activity** says Ford Assistant did it and why.
 - **Quiet hours.** Holds non-urgent alerts overnight and delivers them in the morning; the alarm and door alerts always get through.
 - **Electric and plug-in hybrid support.** Plug-in reminders, charging finished and charging fault alerts, and battery level in place of fuel.
+- **Who's driving.** Household, Service or Guest, so a workshop visit or a borrowed car doesn't auto-lock, remote-start or open the garage. Household drivers each have their own alerts, phones and actions.
 - **Actionable notifications.** **Lock**, **Honk & Flash**, **Start** and **Stop** buttons right in the notification.
 
 > Ford Assistant is unofficial and not affiliated with Ford Motor Company.
@@ -89,7 +90,9 @@ On Home Assistant 2026.8 and later, Ford Assistant has its own device named afte
 | Switch | One per feature: auto-lock, lock at night, pre-conditioning, work prompt, auto-extend, the remote start and vehicle status Live Activities, each alert, garage open and garage close, clearing resolved notifications, and quiet hours. Electric and plug-in hybrid vehicles also get plug-in reminder and charging alert switches. |
 | Number | Auto-lock delay, walk-away distance, cold and hot start limits, minimum fuel to start, extend threshold, fuel / oil / 12V battery thresholds, door open alert delay, garage close delay, and (electric/plug-in hybrid) the plug-in reminder battery level |
 | Time | Pre-conditioning time, leaving-work prompt time, night lock time, quiet hours start and end, and (electric/plug-in hybrid) plug-in reminder time |
-| Sensor | Last event: the most recent alert or action, with its message and time |
+| Select | **Who's driving** (Household, Service or Guest) and **Active driver** (a household person, or Nobody) |
+| Sensor | Last event: the most recent alert or action, with its message and time. Driving status: the current mode, with the active driver and the actions and alerts that are allowed or blocked |
+| Binary sensor | **Automations suppressed**, on while the current mode blocks at least one action |
 
 Temperature limits use the units of the vehicle's outdoor temperature sensor. The walk-away distance uses your Home Assistant unit system (miles or kilometers).
 
@@ -114,6 +117,84 @@ actions:
 
 Event data: `vin`, `config_entry_id`, `type`, `title`, `message`. Types: `autolock`, `nightlock`, `door`, `start`, `plugin`, `charge`, `extend`, `alarm`, `windows`, `fuel`, `oil`, `battery`, `tires`, `indicators`, `garage_open`, `garage`, and `command_lock` / `command_honk` / `command_start` / `command_stop` / `command_extend` for notification buttons.
 
+Changing who's driving fires `ford_assistant_driving_mode_changed`. Event data: `vin`, `config_entry_id`, `mode`, `previous_mode`, `active_driver`, `previous_driver`, `reason` (`manual`, `service`, `detected`, `parked`, `revert` or `duration`), `allowed_actions`, `blocked_actions`, `kept_alerts`, `dropped_alerts`, `automations_suppressed`, `revert_at`. The same event fires when the active driver changes.
+
+```yaml
+triggers:
+  - trigger: event
+    event_type: ford_assistant_driving_mode_changed
+    event_data:
+      mode: service
+actions:
+  - action: notify.persistent_notification
+    data:
+      title: The car is in for service
+      message: Ford Assistant won't lock, start or open the garage until it's back.
+```
+
+## Who's driving
+
+**Who's driving** is a list on the vehicle: **Household**, **Service** or **Guest**. It stays where you set it across restarts. The feature switches are not changed. The mode only decides which of them Ford Assistant actually runs, so switching back puts everything the way it was.
+
+The dashboard shows the mode, and disables a button the mode blocks. **Refresh** always works. Calling the Ford integration's own lock or start from somewhere else still works; those entities belong to the Ford integration. Ford Assistant won't start a blocked action itself, including from a notification button or a Live Activity button.
+
+**Automations suppressed** is on while at least one action is blocked. **Driving status** (and the attributes on **Who's driving**) list the mode, the active driver, `allowed_actions`, `blocked_actions`, `kept_alerts` and `dropped_alerts`, and when the mode will return to Household.
+
+### Household
+
+Under **Settings → Devices & services → Ford Assistant → Configure → Household drivers**, pick the Home Assistant people who drive this vehicle. Each person then has a profile:
+
+- **Alerts they receive.** Unchecked alerts are skipped while they are the active driver.
+- **Their phones.** Leave this empty to use the phones chosen for the vehicle. Otherwise alerts for this driver go only to these phones.
+- **Actions enabled for them.** Unchecked actions don't run, even if the feature switch is on.
+
+**Active driver** lists those people, plus **Nobody**. With nobody selected, every feature follows its own switch.
+
+Ford Assistant fills **Active driver** when it can:
+
+- You can always choose someone yourself. That choice stays until the vehicle is parked at home.
+- When the vehicle leaves home (its location leaves the home zone, or the ignition turns on while it's already away), Ford Assistant looks at the household people. A person counts if they, or one of their device trackers, changed from home to away within 15 minutes of the vehicle leaving.
+- Exactly one such person becomes the active driver. If nobody left, or more than one person did, Ford Assistant doesn't guess.
+- Someone who was already away when Ford Assistant started is not assumed to be driving. Only a leave-home it sees counts.
+- Parking at home (the vehicle is in the home zone and the ignition is off) clears the driver, so the next trip can be detected. This is skipped for the first 3 minutes after Home Assistant or Ford Assistant starts, so a restart doesn't forget a trip that's already underway.
+
+The Ford integration does not publish a phone-as-a-key entity (nothing in its data names a person or a phone), so Ford Assistant uses the device tracker already attached to the person's profile in Home Assistant.
+
+A household driver can open the Ford Assistant page when their person is linked to their Home Assistant user (**Settings → People**). A person with no user can still be the active driver; they just can't open the page. Until you pick any household drivers, dashboard access is unchanged.
+
+### Service
+
+Use **Service** while the car is being worked on. By default every alert still goes out, and every action is blocked: auto-lock, lock at night, lock, unlock, honk, morning pre-conditioning, the leaving-work prompt, auto-extend, remote start, and both garage actions. Asking the vehicle for a fresh status is never blocked.
+
+Change the two checklists under **Configure → Service mode**. **Return to Household after** is optional. Leave it empty to stay in Service until someone changes it. The countdown survives a restart.
+
+### Guest
+
+Use **Guest** when someone else has the car. By default:
+
+- **Kept:** alarm, windows open in the rain, low fuel, 12V battery, tire pressure, warning lights, a door left open, charging, and the vehicle status Live Activity.
+- **Dropped:** oil life, the plug-in reminder, and the remote start Live Activity.
+- **Allowed:** auto-lock, lock, unlock, and honk and flash.
+- **Blocked:** lock at night, morning pre-conditioning, the leaving-work prompt, auto-extend, remote start, and both garage actions.
+
+**Configure → Guest mode** has the same checklists and the same optional return to Household.
+
+### Set it from an automation
+
+```yaml
+action: ford_assistant.set_driving_mode
+target:
+  entity_id: select.your_vehicle_whos_driving
+data:
+  mode: service
+  duration:
+    hours: 4
+```
+
+`mode` is `household`, `service` or `guest`. Leave `duration` out to use the one from **Configure**. Set it to `0` to stay until someone changes the mode. `active_driver` is optional and must be one of the household drivers (or `none`). Choosing a driver this way is a manual choice until the vehicle is parked at home.
+
+An alert that was held back is sent when you return to a mode that keeps it, if the problem is still there. Ford Assistant doesn't repeat an alert that's already on your phone.
+
 ## Coming from the blueprint
 
 When you add Ford Assistant, it looks for a **FordPass – Vehicle Assistant** blueprint automation that controls the same vehicle. Pick it to copy its phones, places, days, feature toggles, thresholds and times, and leave **Turn off the blueprint automation** checked so you don't get every notification twice. The automation is only turned off, not deleted.
@@ -130,7 +211,7 @@ Ford Assistant adds a **Ford Assistant** page to the Home Assistant sidebar as s
 
 ### Who can use it
 
-Admins always can. The dashboard shows where the vehicle is and can unlock and start it, so anyone else only sees it once an admin checks their name under **Who can use Ford Assistant** at the bottom of the dashboard. The same people can change Ford Assistant's own switches, thresholds and times; automations always can. The Ford integration's own entities keep Home Assistant's usual permissions.
+Admins always can. So can a household driver whose person is linked to their Home Assistant user, and anyone an admin checks under **Who can use Ford Assistant** at the bottom of the dashboard. The same people can change Ford Assistant's own switches, thresholds, times and who's driving; automations always can. The Ford integration's own entities keep Home Assistant's usual permissions.
 
 Home Assistant can't show a sidebar entry to only some people, so once anyone who isn't an admin is checked, everyone sees Ford Assistant in the sidebar, and people who aren't checked get a page saying they don't have access.
 

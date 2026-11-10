@@ -55,6 +55,17 @@
     "step": {
       "init": {
         "title": "Ford Assistant options",
+        "description": "Phones and places, who in the household drives, and what Service and Guest mode are allowed to do.",
+        "menu_options": {
+          "settings": "Phones, places and schedules",
+          "household_drivers": "Household drivers",
+          "service_mode": "Service mode",
+          "guest_mode": "Guest mode"
+        }
+      },
+      "settings": {
+        "title": "Phones, places and schedules",
+        "description": "Who gets notifications, which places matter, and which days the scheduled features run.",
         "data": {
           "notify_devices": "Notify devices",
           "phone_tracker": "Your phone",
@@ -68,7 +79,7 @@
           "alarm_normal_states": "Normal alarm states"
         },
         "data_description": {
-          "notify_devices": "Phones that get notifications with Lock, Honk, Start and Stop buttons.",
+          "notify_devices": "Phones that get notifications with Lock, Honk, Start and Stop buttons. A household driver can use their own phones instead.",
           "phone_tracker": "Optional. Auto-lock waits until this phone is away from the vehicle.",
           "home_zone": "Auto-lock only runs outside this zone; pre-conditioning and the garage only run inside it.",
           "work_zone": "Optional. Used for the leaving-work start prompt and a low-fuel reminder.",
@@ -76,6 +87,58 @@
           "todo_entity": "Optional. An oil change item is added when oil life is low.",
           "garage_cover": "Optional. Opens when you arrive home and closes after you park.",
           "alarm_normal_states": "Any other alarm state sends a critical notification."
+        }
+      },
+      "household_drivers": {
+        "title": "Household drivers",
+        "description": "People in Home Assistant who drive this vehicle. While Who's driving is Household and one of them is the active driver, only their alerts, phones and actions are used. Each person linked to a Home Assistant user can also open the Ford Assistant dashboard.",
+        "data": {
+          "household_drivers": "Household drivers"
+        },
+        "data_description": {
+          "household_drivers": "Only these people can be chosen as the active driver. Leave empty to keep today's behavior: every feature follows its own switch, and dashboard access stays with admins and anyone an admin has checked."
+        }
+      },
+      "driver_profile": {
+        "title": "Driver profile",
+        "description": "Alerts, phones and actions for {person}. These apply only while this person is the active driver. Alerts left unchecked are skipped, phones left empty use the vehicle's phones, and actions left unchecked do not run even when their switch is on.",
+        "data": {
+          "alerts": "Alerts they receive",
+          "notify_devices": "Their phones",
+          "actions": "Actions enabled for them"
+        },
+        "data_description": {
+          "alerts": "Checked alerts are sent while this person is the active driver.",
+          "notify_devices": "Optional. Leave empty to use the phones chosen for the vehicle.",
+          "actions": "Unchecked actions are blocked while this person is the active driver. The feature switches stay as they are."
+        }
+      },
+      "service_mode": {
+        "title": "Service mode",
+        "description": "For a workshop visit, an oil change, or any time the vehicle is being serviced. Checked alerts are still sent. Checked actions are still allowed; everything else Ford Assistant would do is blocked. It can switch itself back to Household after the duration you set.",
+        "data": {
+          "service_alerts": "Alerts to keep",
+          "service_actions": "Actions to allow",
+          "service_revert": "Return to Household after"
+        },
+        "data_description": {
+          "service_alerts": "Unchecked alerts are not sent while Service mode is on. By default every alert stays on.",
+          "service_actions": "Unchecked actions are blocked, including auto-lock, remote start and the garage. By default every action is blocked. Asking the vehicle for a fresh status is never blocked.",
+          "service_revert": "Optional. Leave empty to stay in Service mode until someone changes it. The countdown survives a restart."
+        }
+      },
+      "guest_mode": {
+        "title": "Guest mode",
+        "description": "For a borrowed or lent vehicle, or any driver who isn't one of the household people. Checked alerts are still sent. Checked actions are still allowed. It can switch itself back to Household after the duration you set.",
+        "data": {
+          "guest_alerts": "Alerts to keep",
+          "guest_actions": "Actions to allow",
+          "guest_revert": "Return to Household after"
+        },
+        "data_description": {
+          "guest_alerts": "By default the safety alerts and the vehicle status Live Activity stay on. Oil life, the plug-in reminder and the remote start Live Activity stay off.",
+          "guest_actions": "By default the car can still be locked, unlocked, honked and auto-locked. Night lock, remote start, the morning and leaving-work routines, and the garage are blocked.",
+          "guest_revert": "Optional. Leave empty to stay in Guest mode until someone changes it. The countdown survives a restart."
         }
       }
     }
@@ -95,6 +158,44 @@
     "import_choice": {
       "options": {
         "skip": "Don't copy, start fresh"
+      }
+    },
+    "driving_mode": {
+      "options": {
+        "household": "Household",
+        "service": "Service",
+        "guest": "Guest"
+      }
+    },
+    "driving_alert": {
+      "options": {
+        "alarm": "Alarm",
+        "windows": "Windows open in the rain",
+        "fuel": "Low fuel",
+        "oil": "Oil life",
+        "battery": "12V battery",
+        "tires": "Tire pressure",
+        "indicators": "Warning lights",
+        "door": "Door left open",
+        "plugin": "Plug-in reminder",
+        "charge": "Charging",
+        "status_activity": "Vehicle status Live Activity",
+        "remote_start_activity": "Remote start Live Activity"
+      }
+    },
+    "driving_action": {
+      "options": {
+        "auto_lock": "Auto-lock away from home",
+        "night_lock": "Lock at night",
+        "lock": "Lock",
+        "unlock": "Unlock",
+        "honk": "Honk and flash",
+        "precondition": "Morning pre-conditioning",
+        "work_prompt": "Leaving-work start prompt",
+        "auto_extend": "Auto-extend remote start",
+        "remote_start": "Remote start, stop and extend",
+        "garage_open": "Open the garage on arrival",
+        "garage_close": "Close the garage after parking"
       }
     }
   },
@@ -225,6 +326,64 @@
     "sensor": {
       "last_event": {
         "name": "Assistant last event"
+      },
+      "driving_status": {
+        "name": "Driving status",
+        "state": {
+          "household": "Household",
+          "service": "Service",
+          "guest": "Guest"
+        },
+        "state_attributes": {
+          "mode": { "name": "Mode" },
+          "active_driver": { "name": "Active driver" },
+          "active_driver_name": { "name": "Active driver name" },
+          "manual_driver": { "name": "Chosen by hand" },
+          "allowed_actions": { "name": "Allowed actions" },
+          "blocked_actions": { "name": "Blocked actions" },
+          "kept_alerts": { "name": "Alerts kept" },
+          "dropped_alerts": { "name": "Alerts dropped" },
+          "automations_suppressed": { "name": "Automations suppressed" },
+          "revert_at": { "name": "Returns to Household" }
+        }
+      }
+    },
+    "select": {
+      "driving_mode": {
+        "name": "Who's driving",
+        "state": {
+          "household": "Household",
+          "service": "Service",
+          "guest": "Guest"
+        },
+        "state_attributes": {
+          "mode": { "name": "Mode" },
+          "active_driver": { "name": "Active driver" },
+          "active_driver_name": { "name": "Active driver name" },
+          "manual_driver": { "name": "Chosen by hand" },
+          "allowed_actions": { "name": "Allowed actions" },
+          "blocked_actions": { "name": "Blocked actions" },
+          "kept_alerts": { "name": "Alerts kept" },
+          "dropped_alerts": { "name": "Alerts dropped" },
+          "automations_suppressed": { "name": "Automations suppressed" },
+          "revert_at": { "name": "Returns to Household" }
+        }
+      },
+      "active_driver": {
+        "name": "Active driver",
+        "state": {
+          "none": "Nobody"
+        },
+        "state_attributes": {
+          "manual_driver": { "name": "Chosen by hand" },
+          "active_driver_name": { "name": "Active driver name" },
+          "in_effect": { "name": "In effect" }
+        }
+      }
+    },
+    "binary_sensor": {
+      "automations_suppressed": {
+        "name": "Automations suppressed"
       }
     }
   },
@@ -233,7 +392,36 @@
       "message": "The Ford integration's door lock or vehicle tracker for {vin} isn't available yet."
     },
     "not_allowed": {
-      "message": "You don't have access to Ford Assistant. An admin can give you access on the Ford Assistant dashboard."
+      "message": "You don't have access to Ford Assistant. An admin can give you access on the Ford Assistant dashboard, or add your person as a household driver."
+    },
+    "unknown_driver": {
+      "message": "{driver} isn't an eligible household driver for this vehicle."
+    },
+    "unknown_mode": {
+      "message": "{mode} isn't a driving mode. Use household, service or guest."
+    },
+    "no_vehicle": {
+      "message": "Choose a vehicle that has Ford Assistant set up."
+    }
+  },
+  "services": {
+    "set_driving_mode": {
+      "name": "Set who's driving",
+      "description": "Set Household, Service or Guest mode for a vehicle. Service and Guest can return to Household after a duration. Optionally name the active household driver.",
+      "fields": {
+        "mode": {
+          "name": "Mode",
+          "description": "Household is everyday driving. Service is a workshop visit. Guest is anyone else who has the vehicle."
+        },
+        "duration": {
+          "name": "Return to Household after",
+          "description": "How long to stay in Service or Guest mode. Leave this out to use the duration from the vehicle's options. Set it to 0 to stay until someone changes the mode."
+        },
+        "active_driver": {
+          "name": "Active driver",
+          "description": "A household driver chosen in the options, or omit to leave the current driver. This is a manual choice until the vehicle is parked at home."
+        }
+      }
     }
   },
   "issues": {

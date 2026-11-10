@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import FordAssistantConfigEntry
+from .driving import DRIVING_MODES
 from .entity import FordAssistantEntity
 
 
@@ -17,8 +18,14 @@ async def async_setup_entry(
     entry: FordAssistantConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up the sensor."""
-    async_add_entities([LastEventSensor(entry.runtime_data, "last_event")])
+    """Set up the sensors."""
+    controller = entry.runtime_data
+    async_add_entities(
+        [
+            LastEventSensor(controller, "last_event"),
+            DrivingStatusSensor(controller),
+        ]
+    )
 
 
 class LastEventSensor(FordAssistantEntity, SensorEntity):
@@ -40,3 +47,31 @@ class LastEventSensor(FordAssistantEntity, SensorEntity):
             "message": event["message"],
             "time": event["time"].isoformat(),
         }
+
+
+class DrivingStatusSensor(FordAssistantEntity, SensorEntity):
+    """Current driving mode, with the driver and the effective lists.
+
+    The state is the mode (``household``, ``service`` or ``guest``). The
+    attributes are there for automations that want the active driver and the
+    actions Ford Assistant will and won't run. The Who's driving select
+    carries the same attributes.
+    """
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = list(DRIVING_MODES)
+    _attr_translation_key = "driving_status"
+
+    def __init__(self, controller) -> None:
+        """Initialise the sensor."""
+        super().__init__(controller, "driving_status")
+
+    @property
+    def native_value(self) -> str:
+        """The mode in effect."""
+        return self.controller.driving_mode
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Driver and the effective allow, block and keep lists."""
+        return self.controller.driving_attributes()

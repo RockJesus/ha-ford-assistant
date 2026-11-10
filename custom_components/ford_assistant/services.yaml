@@ -1,0 +1,26 @@
+set_driving_mode:
+  target:
+    entity:
+      domain: select
+      integration: ford_assistant
+  fields:
+    mode:
+      required: true
+      example: service
+      selector:
+        select:
+          options:
+            - household
+            - service
+            - guest
+          translation_key: driving_mode
+          mode: dropdown
+    duration:
+      example: "02:00:00"
+      selector:
+        duration:
+          enable_day: true
+    active_driver:
+      selector:
+        entity:
+          domain: person

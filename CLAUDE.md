@@ -21,18 +21,20 @@ renamed the app, though the domain is still `fordpass`.
   changelog; use placeholders like `1FTEST00000000001`.
 - **Support HA 2026.8 (the `hacs.json` minimum) through the latest release.** Use
   `compat.py` for device registry calls (see below), and check APIs exist in both.
-- **Access:** admins plus the people an admin picks (`access.py`, the same model as
-  TV Mgmt). The `ford_assistant/vehicles` websocket command uses `@require_access`, the
-  access commands `require_admin`, and Ford Assistant's switches, numbers and times call
-  `async_ensure_allowed`. The Ford integration's own entities keep HA's permissions.
+- **Access:** admins, plus the people an admin picks, plus household drivers whose
+  person entity has a `user_id` (`access.py`). The `ford_assistant/vehicles` websocket
+  command uses `@require_access`, the access commands `require_admin`, and Ford
+  Assistant's switches, numbers, times and selects call `async_ensure_allowed`.
+  The Ford integration's own entities keep HA's permissions.
 
 ## Layout (`custom_components/ford_assistant/`)
 
 | File | What it does |
 | --- | --- |
 | `__init__.py` | Setup/unload. A missing lock or tracker raises a repair issue and `ConfigEntryNotReady`. |
-| `config_flow.py` | Pick a Ford vehicle → optionally import a blueprint automation → phones, zones, weather, to-do, garage. The options flow (`OptionsFlowWithReload`) changes those plus days and alarm states. |
-| `controller.py` | `FordAssistantController`: all runtime logic for one vehicle (listeners, timers, notifications, alerts, commands). Settings persist through a `Store`. |
+| `config_flow.py` | Pick a Ford vehicle → optionally import a blueprint automation → phones, zones, weather, to-do, garage. The options flow (`OptionsFlowWithReload`) is a menu: those settings, household drivers (one profile step per person), and Service and Guest mode. |
+| `controller.py` | `FordAssistantController`: all runtime logic for one vehicle (listeners, timers, notifications, alerts, commands). Settings, the driving mode, the active driver and its revert time persist through a `Store`. |
+| `driving.py` | Who's driving: modes, alert keep-lists, action allow-lists, driver matching. Pure helpers; the controller enforces them. |
 | `status.py` | The always-on vehicle status Live Activity (`StatusActivity`). |
 | `panel.py` | The sidebar dashboard: registers the panel (only when the frontend is loaded), serves `frontend/`, and the `ford_assistant/vehicles` websocket command. |
 | `frontend/ford-assistant-panel.js` | The dashboard web component. Plain JS with no build step or external libraries; it renders from the live `hass` object and calls services through it. |
@@ -41,7 +43,7 @@ renamed the app, though the domain is still `fordpass`.
 | `compat.py` | Device registry helpers that work before and after HA 2026.8. |
 | `importer.py` | Converts blueprint automation inputs into Ford Assistant settings. |
 | `entity.py` | Base entity and `device_info()`. |
-| `switch.py` / `number.py` / `time.py` / `sensor.py` | Feature switches, thresholds/delays, schedule times, last-event sensor. |
+| `switch.py` / `number.py` / `time.py` / `sensor.py` / `select.py` / `binary_sensor.py` | Feature switches, thresholds/delays, schedule times, last-event and driving-status sensors, Who's driving and Active driver selects, automations-suppressed binary sensor. |
 | `const.py` | Domain, Ford keys, `FEATURES`, `NUMBERS`, `TIMES`, defaults. |
 | `strings.json` + `translations/en.json` | UI text. **Keep the two identical.** `translations/fr.json` has the same keys in French (`tests/test_messages.py` checks). |
 | `messages.py` | Notification and Live Activity text by language (`MESSAGES`, picked by `hass.config.language`, English fallback). The controller and `status.py` use `controller._t(key, ...)`; never write user-facing text inline. The dashboard's words are `WORDS` in the panel script (`_t`, by the viewer's language); keep the French in both the same where they overlap. |
@@ -56,8 +58,11 @@ renamed the app, though the domain is still `fordpass`.
   are stored by the controller's `Store`, not in the config entry.
 - **EV-only settings** go in `EV_FEATURES` / `EV_NUMBERS` / `EV_TIMES`. They're only
   created when the vehicle has EV sensors (`controller.is_electric`).
-- **Options** (phones, zones, weather, to-do, garage, days, alarm states) live in
-  `entry.options` and are read with `controller.options`.
+- **Options** (phones, zones, weather, to-do, garage, days, alarm states, household
+  drivers and their profiles, Service and Guest keep/allow lists and revert durations)
+  live in `entry.options` and are read with `controller.options`. Who's driving itself
+  (the mode, the active driver, the manual flag, the revert time) lives in the
+  controller's `Store`, not in the options.
 - New features that change behavior on upgrade should default to off unless clearly safe.
 
 ## Notifications and Live Activities
@@ -117,6 +122,10 @@ sharing an identifier or connection are shown as **Linked devices**.
   else comes from `hass.states`. Add new Ford roles to `FORD_ENTITY_KEYS` and they're sent along.
 - Unlock, remote start and opening the garage must confirm first. Button entities sit at
   `unknown` until pressed, so only treat `unavailable` as unusable.
+- The vehicles payload includes the Who's driving select. The panel reads its live
+  state and disables buttons whose action is in `blocked_actions`. Refresh is never
+  blocked. The panel also refuses the click, because the Ford entities themselves
+  still accept a direct service call.
 - Check `node --check` on the JS, and render it in Chromium with a fake `hass` (Playwright is
   available) in light and dark themes and at phone width before shipping UI changes.
 - Tests don't have the frontend package, so the panel isn't registered there; `test_panel.py`

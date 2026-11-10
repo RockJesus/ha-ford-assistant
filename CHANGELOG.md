@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-11-10
+
+### Added
+
+- **Who's driving.** Each vehicle has a **Who's driving** list: **Household**, **Service** or **Guest**. It is remembered across restarts.
+  - **Household** is everyday driving. Under **Configure**, choose which Home Assistant people are household drivers, then for each person which alerts they get, which phones those alerts go to, and which actions are enabled for them. While one of them is the **Active driver**, only that profile is used. With nobody selected, every feature follows its own switch, as before.
+  - **Active driver** can be chosen by hand, or filled in when exactly one household person (or their phone) leaves home within 15 minutes of the vehicle leaving. More than one person, or nobody, and Ford Assistant leaves the choice alone. Parking at home clears it. A choice you make yourself stays until then. The Ford integration doesn't report phone-as-a-key, so a person's own device tracker is the phone signal.
+  - **Service** is for a workshop visit. Every alert stays on. Every action is blocked: auto-lock, night lock, lock and unlock commands, honk, remote start and its routines, and the garage. Asking the vehicle for a fresh status is not blocked.
+  - **Guest** is for a borrowed or lent vehicle, or any other driver. Safety alerts stay on (alarm, doors, windows, fuel, 12V battery, tires, warning lights, charging) and so does the vehicle status Live Activity. Oil life, the plug-in reminder and the remote-start countdown stay off. The car can still be locked, unlocked, honked and auto-locked. Night lock, remote start, the morning and leaving-work routines, and the garage are blocked.
+  - Both modes can return to **Household** on their own after a duration you set. The countdown survives a restart. Set the duration to 0 on the **Set who's driving** action to stay until someone changes it.
+  - Checklists for both modes, and each driver's profile, are editable. The feature switches are not changed, so leaving the mode puts them back.
+  - A **Driving status** sensor and the attributes on **Who's driving** show the mode, the active driver, and the actions and alerts that are allowed or blocked. **Automations suppressed** is on while any action is blocked. Changing mode fires `ford_assistant_driving_mode_changed`.
+  - A household driver whose person is linked to their Home Assistant user can open the dashboard. Admins, and anyone an admin checks under **Who can use Ford Assistant**, still can.
+
 ## [1.6.4] - 2026-11-10
 
 ### Changed
@@ -126,6 +140,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Actionable notifications with Lock, Honk & Flash, Start and Stop buttons.
 - Feature switches, number and time settings on the vehicle's device, a last-event sensor, a `ford_assistant_alert` event, a repair issue for missing Ford entities, and diagnostics.
 
+[1.7.0]: https://github.com/bisman-automations/ha-ford-assistant/compare/v1.6.4...v1.7.0
 [1.6.4]: https://github.com/bisman-automations/ha-ford-assistant/compare/v1.6.3...v1.6.4
 [1.6.3]: https://github.com/bisman-automations/ha-ford-assistant/compare/v1.6.2...v1.6.3
 [1.6.2]: https://github.com/bisman-automations/ha-ford-assistant/compare/v1.6.1...v1.6.2

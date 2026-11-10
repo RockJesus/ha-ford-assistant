@@ -9,8 +9,10 @@ DOMAIN: Final = "ford_assistant"
 FORD_DOMAIN: Final = "fordpass"
 
 EVENT_ALERT: Final = "ford_assistant_alert"
+EVENT_DRIVING_MODE_CHANGED: Final = "ford_assistant_driving_mode_changed"
 NOTIFICATION_ACTION_EVENT: Final = "mobile_app_notification_action"
 ACTION_PREFIX: Final = "FORD_ASSISTANT"
+SERVICE_SET_DRIVING_MODE: Final = "set_driving_mode"
 
 # Config entry data / options
 CONF_VIN: Final = "vin"
@@ -24,6 +26,17 @@ CONF_GARAGE: Final = "garage_cover"
 CONF_PRECONDITION_DAYS: Final = "precondition_days"
 CONF_WORK_PROMPT_DAYS: Final = "work_prompt_days"
 CONF_ALARM_NORMAL_STATES: Final = "alarm_normal_states"
+# Who's driving. Drivers are person entity ids. Profiles, alert keep-lists
+# and action allow-lists are stored beside them; see driving.py for the shape
+# and the defaults used when a key is missing.
+CONF_HOUSEHOLD_DRIVERS: Final = "household_drivers"
+CONF_DRIVER_PROFILES: Final = "driver_profiles"
+CONF_SERVICE_ALERTS: Final = "service_alerts"
+CONF_SERVICE_ACTIONS: Final = "service_actions"
+CONF_SERVICE_REVERT: Final = "service_revert"
+CONF_GUEST_ALERTS: Final = "guest_alerts"
+CONF_GUEST_ACTIONS: Final = "guest_actions"
+CONF_GUEST_REVERT: Final = "guest_revert"
 
 WEEKDAYS: Final = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 DEFAULT_DAYS: Final = ["mon", "tue", "wed", "thu", "fri"]

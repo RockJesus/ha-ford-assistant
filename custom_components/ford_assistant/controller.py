@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 import logging
 from typing import Any
 
@@ -50,6 +50,7 @@ from .const import (
     CONF_ALARM_NORMAL_STATES,
     CONF_GARAGE,
     CONF_HOME_ZONE,
+    CONF_HOUSEHOLD_DRIVERS,
     CONF_NOTIFY_DEVICES,
     CONF_PHONE_TRACKER,
     CONF_PRECONDITION_DAYS,
@@ -64,6 +65,7 @@ from .const import (
     DOOR_RECHECK_DELAY,
     EV_ROLES,
     EVENT_ALERT,
+    EVENT_DRIVING_MODE_CHANGED,
     FEATURES,
     NOTIFICATION_ACTION_EVENT,
     NUMBERS,
@@ -74,6 +76,18 @@ from .const import (
     WINDOW_OPEN_DELAY,
 )
 from .discovery import ford_device, resolve_entities, vehicle_name
+from .driving import (
+    ALERT_OF_KIND,
+    COMMAND_ACTIONS,
+    DRIVER_MATCH_WINDOW,
+    DRIVING_MODES,
+    FEATURE_REQUIRES,
+    MODE_HOUSEHOLD,
+    DrivingPolicy,
+    configured_revert,
+    matching_drivers,
+    policy_for,
+)
 from .logic import (
     TIRE_POSITIONS,
     action_id,
@@ -148,6 +162,15 @@ class FordAssistantController:
         self._activity_sent_at: datetime | None = None
         self._activity_pending = False
         self._door_rechecked = False
+        # Who's driving. The mode, the driver and the revert time live in the
+        # same store as the switches so they survive a restart. See driving.py.
+        self.driving_mode = MODE_HOUSEHOLD
+        self._active_driver: str | None = None
+        self.active_driver_manual = False
+        self._revert_at: datetime | None = None
+        self._departure_at: datetime | None = None
+        self._left_home: dict[str, datetime] = {}
+        self._driver_trackers: set[str] = set()
         # Always-on vehicle status Live Activity
         self.status = StatusActivity(self)
 
@@ -183,6 +206,7 @@ class FordAssistantController:
             self._deferred = dict(stored.get("deferred", {}))
             if started := stored.get("status_started"):
                 self.status.started_at = dt_util.parse_datetime(started)
+            self._restore_driving(stored)
         elif imported := self.entry.data.get("imported"):
             # First start after importing a blueprint automation's settings.
             for key, value in imported.get("features", {}).items():
@@ -198,6 +222,7 @@ class FordAssistantController:
                     except (TypeError, ValueError):
                         pass
             self._save()
+        self._forget_stale_driver()
         self.entities = resolve_entities(self.hass, self.vin)
 
     @property
@@ -271,6 +296,11 @@ class FordAssistantController:
         if self._is(e.get("remote_start"), "on"):
             self._schedule_activity_update()
         self.status.async_start()
+        self._watch_drivers()
+        self._restore_driving_timer()
+        # Take down anything the restored mode isn't supposed to show. New
+        # alerts wait for a real change, or for a mode change after startup.
+        self._suppress_dropped_alerts()
 
     @callback
     def async_stop(self) -> None:
@@ -316,6 +346,19 @@ class FordAssistantController:
             "status_started": self.status.started_at.isoformat()
             if self.status.started_at
             else None,
+            "driving_mode": self.driving_mode,
+            "active_driver": self._active_driver,
+            "active_driver_manual": self.active_driver_manual,
+            "driving_revert_at": self._revert_at.isoformat()
+            if self._revert_at
+            else None,
+            "driving_departure_at": self._departure_at.isoformat()
+            if self._departure_at
+            else None,
+            "driving_left_home": {
+                entity_id: stamp.isoformat()
+                for entity_id, stamp in self._left_home.items()
+            },
         }
 
     @callback
@@ -353,6 +396,468 @@ class FordAssistantController:
         self._schedule_time(key)
         self._save()
         self._notify_listeners()
+
+    # ----------------------------------------------------------- who's driving
+
+    def _restore_driving(self, stored: dict[str, Any]) -> None:
+        """Put a saved mode, driver and revert time back."""
+        mode = stored.get("driving_mode")
+        if mode in DRIVING_MODES:
+            self.driving_mode = mode
+        driver = stored.get("active_driver")
+        if isinstance(driver, str) and driver:
+            self._active_driver = driver
+        self.active_driver_manual = bool(stored.get("active_driver_manual"))
+        self._revert_at = self._parse_stamp(stored.get("driving_revert_at"))
+        self._departure_at = self._recent_stamp(stored.get("driving_departure_at"))
+        left = stored.get("driving_left_home") or {}
+        if isinstance(left, dict):
+            for entity_id, raw in left.items():
+                if stamp := self._recent_stamp(raw):
+                    self._left_home[str(entity_id)] = stamp
+
+    @staticmethod
+    def _parse_stamp(raw: Any) -> datetime | None:
+        if not isinstance(raw, str):
+            return None
+        return dt_util.parse_datetime(raw)
+
+    def _recent_stamp(self, raw: Any) -> datetime | None:
+        """A timestamp still inside the driver-match window, else None."""
+        stamp = self._parse_stamp(raw)
+        if stamp is None:
+            return None
+        if (dt_util.utcnow() - stamp).total_seconds() > DRIVER_MATCH_WINDOW:
+            return None
+        return stamp
+
+    def _forget_stale_driver(self) -> None:
+        """Drop a saved driver who is no longer an eligible household person."""
+        if self._active_driver and self._active_driver not in self.household_drivers:
+            self._active_driver = None
+            self.active_driver_manual = False
+
+    @property
+    def household_drivers(self) -> list[str]:
+        """Person entities an admin chose as household drivers."""
+        raw = self.options.get(CONF_HOUSEHOLD_DRIVERS) or []
+        if not isinstance(raw, list):
+            return []
+        return [item for item in raw if isinstance(item, str) and item]
+
+    @property
+    def active_driver(self) -> str | None:
+        """The household person driving, when they're still eligible."""
+        if self._active_driver and self._active_driver in self.household_drivers:
+            return self._active_driver
+        return None
+
+    @property
+    def active_driver_name(self) -> str | None:
+        """The active driver's name, for attributes and the dashboard."""
+        if (driver := self.active_driver) is None:
+            return None
+        state = self.hass.states.get(driver)
+        return state.name if state else None
+
+    @property
+    def policy(self) -> DrivingPolicy:
+        """What the current mode allows and which alerts it still sends."""
+        return policy_for(self.driving_mode, self.active_driver, self.options)
+
+    def allows_action(self, action: str) -> bool:
+        """Whether the current mode lets Ford Assistant do this."""
+        return self.policy.allows(action)
+
+    def keeps_alert(self, alert: str) -> bool:
+        """Whether the current mode still sends this alert."""
+        return self.policy.keeps(alert)
+
+    def allows_feature(self, feature: str) -> bool:
+        """Whether an automation and the command it sends are both allowed."""
+        return all(self.allows_action(action) for action in FEATURE_REQUIRES[feature])
+
+    def driving_attributes(self) -> dict[str, Any]:
+        """Shared attributes for the select and the driving-status sensor."""
+        policy = self.policy
+        return {
+            "mode": self.driving_mode,
+            "active_driver": self.active_driver,
+            "active_driver_name": self.active_driver_name,
+            "manual_driver": self.active_driver_manual,
+            "allowed_actions": list(policy.allowed_actions),
+            "blocked_actions": list(policy.blocked_actions),
+            "kept_alerts": list(policy.kept_alerts),
+            "dropped_alerts": list(policy.dropped_alerts),
+            "automations_suppressed": policy.automations_suppressed,
+            "revert_at": self._revert_at.isoformat() if self._revert_at else None,
+        }
+
+    def set_driving_mode(
+        self,
+        mode: str,
+        *,
+        duration: timedelta | None = None,
+        use_duration: bool = False,
+        reason: str = "manual",
+    ) -> None:
+        """Change mode, and arm or cancel the return to Household.
+
+        ``use_duration`` means the caller passed a duration: that duration
+        wins, and zero means stay until someone changes the mode. Without
+        it, Service and Guest use the duration from options (which may be
+        unset). Choosing the mode that's already on, without a duration,
+        leaves a running revert timer alone.
+        """
+        if mode not in DRIVING_MODES:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="unknown_mode",
+                translation_placeholders={"mode": mode},
+            )
+        previous_mode = self.driving_mode
+        previous_driver = self.active_driver
+        self.driving_mode = mode
+        rescheduled = False
+        if mode == MODE_HOUSEHOLD:
+            if self._revert_at is not None:
+                rescheduled = True
+            self._cancel_timer("driving_revert")
+            self._revert_at = None
+        elif previous_mode != mode or use_duration:
+            self._cancel_timer("driving_revert")
+            span = (
+                duration
+                if use_duration and duration and duration.total_seconds() > 0
+                else None
+                if use_duration
+                else configured_revert(self.options, mode)
+            )
+            if span is None:
+                self._revert_at = None
+            else:
+                self._revert_at = dt_util.utcnow() + span
+                self._start_timer(
+                    "driving_revert", span.total_seconds(), self._revert_to_household
+                )
+            rescheduled = True
+        self._save()
+        self._notify_listeners()
+        changed = previous_mode != mode
+        if changed or rescheduled or reason == "revert":
+            self._fire_driving_event(previous_mode, previous_driver, reason)
+        if changed:
+            self._on_policy_changed()
+
+    def set_active_driver(
+        self, driver: str | None, *, manual: bool, reason: str
+    ) -> None:
+        """Name the driver, or clear them.
+
+        ``manual`` keeps automatic detection from replacing the choice until
+        the vehicle is parked at home. A person who isn't an eligible
+        household driver is rejected.
+        """
+        if driver is not None and driver not in self.household_drivers:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="unknown_driver",
+                translation_placeholders={"driver": driver},
+            )
+        previous_driver = self.active_driver
+        if previous_driver == driver and self.active_driver_manual == manual:
+            return
+        self._active_driver = driver
+        self.active_driver_manual = manual
+        self._save()
+        self._notify_listeners()
+        self._fire_driving_event(self.driving_mode, previous_driver, reason)
+        if self.driving_mode == MODE_HOUSEHOLD:
+            self._on_policy_changed()
+
+    def _restore_driving_timer(self) -> None:
+        """Finish a revert that came due while Home Assistant was stopped."""
+        if self.driving_mode == MODE_HOUSEHOLD or self._revert_at is None:
+            return
+        remaining = (self._revert_at - dt_util.utcnow()).total_seconds()
+        if remaining <= 0:
+            self.set_driving_mode(MODE_HOUSEHOLD, reason="revert")
+            return
+        self._start_timer("driving_revert", remaining, self._revert_to_household)
+
+    async def _revert_to_household(self) -> None:
+        """The Service or Guest duration ran out."""
+        if self.driving_mode == MODE_HOUSEHOLD:
+            return
+        self.set_driving_mode(MODE_HOUSEHOLD, reason="revert")
+
+    def _fire_driving_event(
+        self, previous_mode: str, previous_driver: str | None, reason: str
+    ) -> None:
+        policy = self.policy
+        self.hass.bus.async_fire(
+            EVENT_DRIVING_MODE_CHANGED,
+            {
+                "vin": self.vin,
+                "config_entry_id": self.entry.entry_id,
+                "mode": self.driving_mode,
+                "previous_mode": previous_mode,
+                "active_driver": self.active_driver,
+                "previous_driver": previous_driver,
+                "reason": reason,
+                "allowed_actions": list(policy.allowed_actions),
+                "blocked_actions": list(policy.blocked_actions),
+                "kept_alerts": list(policy.kept_alerts),
+                "dropped_alerts": list(policy.dropped_alerts),
+                "automations_suppressed": policy.automations_suppressed,
+                "revert_at": self._revert_at.isoformat() if self._revert_at else None,
+            },
+        )
+
+    def _on_policy_changed(self) -> None:
+        """Apply a new mode or driver: drop what it blocks, send what it keeps."""
+        self._suppress_dropped_alerts()
+        if self._activity_active and not self._activity_enabled():
+            self.hass.async_create_task(self._activity_end())
+        elif self._activity_enabled() and self._is(
+            self.entities.get("remote_start"), "on"
+        ):
+            self._schedule_activity_update()
+        if self.status.started_at and not self.status.enabled:
+            self.hass.async_create_task(self.status.async_turned_off())
+        elif self.status.enabled:
+            self.hass.async_create_task(self.status.async_update(force=True))
+        self.hass.async_create_task(self._catch_up_alerts())
+
+    def _suppress_dropped_alerts(self) -> None:
+        """Remove alerts the current mode does not keep."""
+        for kind, alert in ALERT_OF_KIND.items():
+            if not self.keeps_alert(alert):
+                self._clear(kind)
+
+    async def _catch_up_alerts(self) -> None:
+        """Send a kept alert that's already true and not on anyone's phone.
+
+        Switching back to a mode that keeps an alert (or to a driver who
+        receives it) delivers it if the problem is still there. Alerts are
+        still remembered, so this doesn't repeat one that's already showing.
+        """
+        if self._condition_unsent("fuel", "fuel_alert", "fuel"):
+            level, _source, _range = self._energy()
+            if level is not None and level < self.numbers["fuel_threshold"]:
+                self.latched["fuel"] = True
+                self._save()
+                await self._fuel_notification()
+        if self._condition_unsent("oil", "oil_alert", "oil"):
+            oil = self._number("oil")
+            if oil is not None and oil < self.numbers["oil_threshold"]:
+                self.latched["oil"] = True
+                self._save()
+                await self._oil_notification(oil)
+        if self._condition_unsent("battery", "battery_alert", "battery"):
+            battery = self._number("battery")
+            if battery is not None and battery < self.numbers["battery_threshold"]:
+                self.latched["battery"] = True
+                self._save()
+                state = self._state("battery")
+                volts = state.attributes.get("batteryVoltage") if state else None
+                extra = self._t("volts", volts=volts) if volts is not None else ""
+                await self._notify(
+                    "battery",
+                    self._t("battery_12v_title", name=self.name),
+                    self._t("battery_12v_message", level=round(battery), extra=extra),
+                )
+        if self._condition_unsent("tires", "tire_alert", "tires"):
+            state = self._state("tires")
+            if state is not None and state.state not in BAD_STATES:
+                if state.state != "NORMAL_OPERATION":
+                    self.latched["tires"] = True
+                    self._save()
+                    await self._notify(
+                        "tires",
+                        self._t("tires_title", name=self.name),
+                        tire_summary(
+                            state.state,
+                            state.attributes,
+                            {pos: self._t(f"tire_{pos}") for pos in TIRE_POSITIONS},
+                        ),
+                    )
+        if self._condition_unsent("indicators", "indicator_alert", "indicators"):
+            state = self._state("indicators")
+            if state is not None and state.state not in BAD_STATES:
+                lights = active_indicators(state.attributes)
+                if (to_float(state.state) or 0) > 0:
+                    self.latched["indicators"] = True
+                    self._save()
+                    await self._notify(
+                        "indicators",
+                        self._t("warning_title", name=self.name),
+                        ", ".join(lights) or self._t("warning_message"),
+                    )
+        if self._condition_unsent("alarm", "alarm_alert", "alarm"):
+            state = self._state("alarm")
+            normal = (
+                self.options.get(CONF_ALARM_NORMAL_STATES)
+                or DEFAULT_ALARM_NORMAL_STATES
+            )
+            if state is not None and state.state not in (*normal, *BAD_STATES):
+                actions = [
+                    cmd
+                    for cmd, role in (("LOCK", "lock"), ("HONK", "honk"))
+                    if role in self.entities
+                ]
+                await self._notify(
+                    "alarm",
+                    self._t("alarm_title", name=self.name),
+                    self._t("alarm_message", state=state.state),
+                    actions=actions,
+                    critical=True,
+                )
+        if (
+            self.features["door_open_alert"]
+            and self.keeps_alert("door")
+            and self._doors_open()
+            and self._ignition_off()
+            and "door" not in self.shown
+        ):
+            if self.latched.get("door"):
+                # The wait already finished while this alert was dropped.
+                await self._check_door_open()
+            elif "door_open" not in self._timers:
+                self._start_timer(
+                    "door_open", self._door_open_delay, self._check_door_open
+                )
+        if (
+            self._windows_open()
+            and self.features["windows_alert"]
+            and self.keeps_alert("windows")
+            and "windows" not in self.shown
+        ):
+            await self._check_windows()
+        if self._condition_unsent("charge", "charge_alert", "charge"):
+            state = self._value("ev_charging")
+            if state in CHARGE_FAULTS:
+                await self._notify(
+                    "charge",
+                    self._t("charge_stopped_title", name=self.name),
+                    self._t(
+                        "charger_not_detected"
+                        if state == "STATION_NOT_DETECTED"
+                        else "charger_fault"
+                    )
+                    + (f" {self._battery_text()}" if self._battery_text() else ""),
+                    time_sensitive=True,
+                )
+
+    def _condition_unsent(self, kind: str, feature: str, alert: str) -> bool:
+        return (
+            self.features.get(feature, False)
+            and self.keeps_alert(alert)
+            and kind not in self.shown
+        )
+
+    def _watch_drivers(self) -> None:
+        """Watch household people, and the phones Home Assistant knows for them."""
+        persons = self.household_drivers
+        if not persons:
+            return
+        self._unsubs.append(
+            async_track_state_change_event(
+                self.hass, persons, self._on_household_person
+            )
+        )
+        for person_id in persons:
+            state = self.hass.states.get(person_id)
+            if state is None:
+                continue
+            for tracker in state.attributes.get("device_trackers") or []:
+                self._watch_driver_tracker(str(tracker))
+
+    def _watch_driver_tracker(self, tracker_id: str) -> None:
+        if not tracker_id or tracker_id in self._driver_trackers:
+            return
+        self._driver_trackers.add(tracker_id)
+        self._unsubs.append(
+            async_track_state_change_event(
+                self.hass, [tracker_id], self._on_driver_tracker
+            )
+        )
+
+    @callback
+    def _on_household_person(self, event: Event[EventStateChangedData]) -> None:
+        new = event.data["new_state"]
+        if new is not None:
+            for tracker in new.attributes.get("device_trackers") or []:
+                self._watch_driver_tracker(str(tracker))
+        self._note_left_home(event.data["entity_id"], event.data["old_state"], new)
+
+    @callback
+    def _on_driver_tracker(self, event: Event[EventStateChangedData]) -> None:
+        self._note_left_home(
+            event.data["entity_id"], event.data["old_state"], event.data["new_state"]
+        )
+
+    def _note_left_home(
+        self, entity_id: str, old: State | None, new: State | None
+    ) -> None:
+        """Remember a person or their phone changing from home to away."""
+        if old is None or new is None:
+            return
+        if old.state in BAD_STATES or new.state in BAD_STATES:
+            return
+        if old.state == "home" and new.state != "home":
+            self._left_home[entity_id] = dt_util.utcnow()
+            self._save()
+            self._consider_active_driver()
+
+    def _vehicle_departed(self) -> None:
+        """The vehicle just left home, or was started while already away."""
+        self._departure_at = dt_util.utcnow()
+        self._save()
+        self._consider_active_driver()
+
+    def _consider_active_driver(self) -> None:
+        """Name the driver when exactly one household person left with the car.
+
+        A manual choice is left alone. See the module doc in ``driving.py``.
+        """
+        if self.driving_mode != MODE_HOUSEHOLD or self.active_driver_manual:
+            return
+        if self._departure_at is None:
+            return
+        trackers: dict[str, tuple[str, ...]] = {}
+        for person_id in self.household_drivers:
+            state = self.hass.states.get(person_id)
+            raw = state.attributes.get("device_trackers") if state else None
+            trackers[person_id] = (
+                tuple(str(item) for item in raw) if isinstance(raw, list) else ()
+            )
+        matched = matching_drivers(
+            self.household_drivers,
+            self._left_home,
+            trackers,
+            self._departure_at,
+            dt_util.utcnow(),
+        )
+        if len(matched) == 1:
+            self.set_active_driver(matched[0], manual=False, reason="detected")
+
+    def _trip_ended(self) -> None:
+        """Parked at home: forget the driver so the next trip can be detected.
+
+        Ignored during the startup wait, matching the garage. A restart while
+        the vehicle is already parked doesn't look like arriving home, and a
+        restart mid-trip doesn't clear the driver.
+        """
+        if self.driving_mode != MODE_HOUSEHOLD:
+            return
+        if (dt_util.utcnow() - self._ready_at).total_seconds() < GARAGE_STARTUP_GRACE:
+            return
+        self._departure_at = None
+        if self._active_driver is not None or self.active_driver_manual:
+            self.set_active_driver(None, manual=False, reason="parked")
+        else:
+            self._save()
 
     @property
     def _auto_lock_delay(self) -> float:
@@ -522,7 +1027,7 @@ class FordAssistantController:
         """
         services: list[str] = []
         devices = dr.async_get(self.hass)
-        for device_id in self.options.get(CONF_NOTIFY_DEVICES, []):
+        for device_id in self._notify_device_ids():
             device = devices.async_get(device_id)
             if device is None:
                 continue
@@ -536,6 +1041,17 @@ class FordAssistantController:
                     services.append(notify_service_name(name))
         return services
 
+    def _notify_device_ids(self) -> list[str]:
+        """Phones for the active driver, or the vehicle's phones.
+
+        A household driver's profile can name their own phones. An empty
+        profile list, and Service and Guest mode, use the vehicle's phones.
+        """
+        custom = self.policy.notify_devices
+        if custom:
+            return list(custom)
+        return [str(device) for device in self.options.get(CONF_NOTIFY_DEVICES, [])]
+
     async def _notify(
         self,
         kind: str,
@@ -546,9 +1062,17 @@ class FordAssistantController:
         time_sensitive: bool = False,
     ) -> None:
         """Send a notification, fire an event, and record it."""
+        if (alert := ALERT_OF_KIND.get(kind)) and not self.keeps_alert(alert):
+            _LOGGER.debug(
+                "%s: not sending %s alert in %s mode",
+                self.name,
+                kind,
+                self.driving_mode,
+            )
+            return
         data: dict[str, Any] = {"tag": f"ford-{kind}-{self.vin}"}
-        if actions:
-            data["actions"] = self._actions(actions)
+        if actions and (built := self._actions(actions)):
+            data["actions"] = built
         if critical:
             data["push"] = {"sound": {"name": "default", "critical": 1, "volume": 1.0}}
             data["ttl"] = 0
@@ -575,6 +1099,7 @@ class FordAssistantController:
         self._save()
 
     def _actions(self, commands: list[str]) -> list[dict[str, str]]:
+        """Notification buttons, minus commands the current mode blocks."""
         labels = {
             "LOCK": self._t("action_lock"),
             "HONK": self._t("action_honk"),
@@ -585,6 +1110,7 @@ class FordAssistantController:
         return [
             {"action": action_id(cmd, self.vin), "title": labels[cmd]}
             for cmd in commands
+            if self.allows_action(COMMAND_ACTIONS[cmd])
         ]
 
     async def _deliver(self, payload: dict[str, Any]) -> None:
@@ -702,6 +1228,8 @@ class FordAssistantController:
         was_off = old is not None and str(old.state).upper() == "OFF"
         if off and not was_off:
             self._start_timer("auto_lock", self._auto_lock_delay, self._check_auto_lock)
+            if self._in_zone(self._home()):
+                self._trip_ended()
             self._start_timer(
                 "garage_close",
                 self.numbers["garage_close_delay"] * 60,
@@ -715,6 +1243,9 @@ class FordAssistantController:
         elif not off:
             self._cancel_timer("garage_close")
             self._cancel_timer("door_open")
+            if was_off and not self._in_zone(self._home()):
+                # Started while already away: someone has the vehicle.
+                self._vehicle_departed()
             # Back in the vehicle: earlier notifications are no longer news.
             self._clear("start", "autolock", "nightlock", "garage", "plugin", "charge")
             if self._activity_active:
@@ -822,7 +1353,7 @@ class FordAssistantController:
         return self.hass.config.units.length(meters, UnitOfLength.METERS) > limit
 
     async def _check_auto_lock(self) -> None:
-        if not self.features["auto_lock"]:
+        if not self.features["auto_lock"] or not self.allows_feature("auto_lock"):
             return
         if self._in_zone(self._home()):
             return
@@ -845,7 +1376,7 @@ class FordAssistantController:
             )
 
     async def _night_lock(self) -> None:
-        if not self.features["night_lock"]:
+        if not self.features["night_lock"] or not self.allows_feature("night_lock"):
             return
         if (
             not self._is(self.entities.get("lock"), "unlocked")
@@ -877,6 +1408,8 @@ class FordAssistantController:
     # ------------------------------------------------- remote start features
 
     async def _precondition(self) -> None:
+        if not self.allows_feature("precondition"):
+            return
         if not (
             self.features["precondition"]
             and self._today_in(CONF_PRECONDITION_DAYS)
@@ -897,6 +1430,8 @@ class FordAssistantController:
                 await self._notify("start", title, message, actions=["STOP"])
 
     async def _work_prompt(self) -> None:
+        if not self.allows_feature("work_prompt"):
+            return
         if not (
             self.features["work_prompt"]
             and self._today_in(CONF_WORK_PROMPT_DAYS)
@@ -937,10 +1472,16 @@ class FordAssistantController:
 
     def _activity_enabled(self) -> bool:
         # With the status activity on, remote start shows there instead.
+        # A mode that drops the status activity lets this one show again,
+        # and a mode that drops this one stops it.
+        status_showing = self.features["status_activity"] and self.keeps_alert(
+            "status_activity"
+        )
         return (
             self.features["remote_start_activity"]
-            and not self.features["status_activity"]
-            and bool(self.options.get(CONF_NOTIFY_DEVICES))
+            and self.keeps_alert("remote_start_activity")
+            and not status_showing
+            and bool(self._notify_services())
         )
 
     def _activity_due(self, minutes: float | None) -> bool:
@@ -1007,7 +1548,8 @@ class FordAssistantController:
         commands = ["STOP"]
         if "extend" in self.entities:
             commands.append("EXTEND")
-        data["actions"] = self._actions(commands)
+        if built := self._actions(commands):
+            data["actions"] = built
         if url := self._tap_url():
             data["url"] = url
             data["clickAction"] = url
@@ -1044,7 +1586,11 @@ class FordAssistantController:
             and self._activity_due(minutes)
         ):
             self._schedule_activity_update()
-        if minutes is None or not self.features["auto_extend"]:
+        if (
+            minutes is None
+            or not self.features["auto_extend"]
+            or not self.allows_feature("auto_extend")
+        ):
             return
         limit = self.numbers["extend_below"]
         crossed = 0 < minutes < limit and (previous is None or previous >= limit)
@@ -1118,7 +1664,9 @@ class FordAssistantController:
         weather = self.options.get(CONF_WEATHER)
         if not (self.features["windows_alert"] and weather and self._windows_open()):
             return
-        if self.latched.get("windows"):
+        if self.latched.get("windows") and (
+            "windows" in self.shown or not self.keeps_alert("windows")
+        ):
             return
         forecast: list[dict[str, Any]] = []
         try:
@@ -1186,6 +1734,8 @@ class FordAssistantController:
             self.hass.async_create_task(self._oil_notification(oil))
 
     async def _oil_notification(self, oil: float | None) -> None:
+        if not self.keeps_alert("oil"):
+            return
         await self._notify(
             "oil",
             self._t("oil_title", name=self.name),
@@ -1288,6 +1838,10 @@ class FordAssistantController:
         home = self._home()
         if self._in_zone(home, new) and not self._in_zone(home, old):
             self.hass.async_create_task(self._garage_open())
+            if self._ignition_off():
+                self._trip_ended()
+        elif self._in_zone(home, old) and not self._in_zone(home, new):
+            self._vehicle_departed()
         work = self.options.get(CONF_WORK_ZONE)
         if work and self._in_zone(work, old) and not self._in_zone(work, new):
             self.hass.async_create_task(self._leaving_work_fuel())
@@ -1336,6 +1890,8 @@ class FordAssistantController:
 
     async def _garage_open(self) -> None:
         garage = self.options.get(CONF_GARAGE)
+        if not self.allows_feature("garage_open"):
+            return
         if not (self.features["garage_open"] and garage and self._is(garage, "closed")):
             return
         if reason := self._garage_skip_reason(garage):
@@ -1355,6 +1911,8 @@ class FordAssistantController:
 
     async def _check_garage_close(self) -> None:
         garage = self.options.get(CONF_GARAGE)
+        if not self.allows_feature("garage_close"):
+            return
         if not (
             self.features["garage_close"]
             and garage
@@ -1392,6 +1950,8 @@ class FordAssistantController:
     async def _plug_in_reminder(self) -> None:
         if not (self.features["plug_in_reminder"] and self.is_electric):
             return
+        if not self.keeps_alert("plugin"):
+            return
         soc = self._number("soc")
         if (
             soc is None
@@ -1421,7 +1981,7 @@ class FordAssistantController:
             return
         if new.state in BAD_STATES or new.state == CHARGE_IN_PROGRESS:
             return
-        if not self.features["charge_alert"]:
+        if not self.features["charge_alert"] or not self.keeps_alert("charge"):
             return
         if new.state in CHARGE_FAULTS:
             self.hass.async_create_task(
@@ -1452,6 +2012,14 @@ class FordAssistantController:
     def _on_action(self, event: Event) -> None:
         command = parse_action(event.data.get("action"), self.vin)
         if command is None:
+            return
+        if not self.allows_action(COMMAND_ACTIONS[command]):
+            _LOGGER.info(
+                "%s: ignoring %s because %s mode blocks it",
+                self.name,
+                command.lower(),
+                self.driving_mode,
+            )
             return
         target = {
             "LOCK": ("lock", "lock", "lock"),

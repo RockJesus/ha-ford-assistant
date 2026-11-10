@@ -1,10 +1,16 @@
-"""Who may use Ford Assistant: admins, plus the people an admin picks.
+"""Who may use Ford Assistant.
 
-The dashboard shows where the vehicle is and has unlock, remote start and
-garage buttons, so only admins see it unless an admin lets someone else in.
-The same rule covers Ford Assistant's own switches, numbers and times.
-Automations (no user) are always allowed. The Ford integration's own
-entities keep Home Assistant's usual permissions.
+Admins always can. So can anyone an admin checks on the dashboard, and so
+can a household driver whose Home Assistant person is linked to their user
+(the person's ``user_id``). Until any household driver is chosen, nothing
+changes: only admins and the people an admin checked can get in.
+
+The same rule covers Ford Assistant's own switches, numbers, times and
+selects. Automations (no user) are always allowed. The Ford integration's
+own entities keep Home Assistant's usual permissions. Home Assistant can't
+show a sidebar entry to only some people, so once anyone who isn't an admin
+is allowed, everyone sees Ford Assistant in the sidebar and the page tells
+the others they don't have access.
 """
 
 from __future__ import annotations
@@ -12,6 +18,7 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.auth.models import User
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.storage import Store
@@ -42,7 +49,9 @@ class Access:
     def allows(self, user: User | None) -> bool:
         if user is None or not user.is_active:
             return False
-        return user.is_admin or user.id in self.user_ids
+        if user.is_admin or user.id in self.user_ids:
+            return True
+        return user.id in household_driver_user_ids(self.hass)
 
     async def async_allows_context(self, context: Context | None) -> bool:
         if context is None or context.user_id is None:
@@ -51,11 +60,34 @@ class Access:
 
     async def async_listed_non_admins(self) -> bool:
         """Is anyone who isn't an admin allowed in? Then the sidebar shows to everyone."""
-        for uid in self.user_ids:
+        ids = set(self.user_ids) | household_driver_user_ids(self.hass)
+        for uid in ids:
             user = await self.hass.auth.async_get_user(uid)
             if user and user.is_active and not user.is_admin:
                 return True
         return False
+
+
+def household_driver_user_ids(hass: HomeAssistant) -> set[str]:
+    """Users linked to an eligible household driver on any loaded vehicle.
+
+    A person grants access only when Home Assistant has linked them to a
+    user (Settings → People). A person with no user can still be the active
+    driver; they just can't open the dashboard.
+    """
+    found: set[str] = set()
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if entry.state is not ConfigEntryState.LOADED:
+            continue
+        controller = entry.runtime_data
+        for person_id in getattr(controller, "household_drivers", ()):
+            state = hass.states.get(person_id)
+            if state is None:
+                continue
+            user_id = state.attributes.get("user_id")
+            if user_id:
+                found.add(str(user_id))
+    return found
 
 
 async def async_get_access(hass: HomeAssistant) -> Access:

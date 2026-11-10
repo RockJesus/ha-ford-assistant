@@ -47,4 +47,5 @@ async def async_get_config_entry_diagnostics(
             **controller.last_event,
             "time": controller.last_event["time"].isoformat(),
         },
+        "driving": controller.driving_attributes(),
     }
