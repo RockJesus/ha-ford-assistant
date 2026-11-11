@@ -63,13 +63,11 @@ class BridgeEntity(FordAssistantEntity):
         self,
         controller: FordAssistantController,
         key: str,
-        name: str,
         icon: str | None = None,
     ) -> None:
-        """Initialise with a plain name (these entities aren't translated)."""
+        """Initialise with a translation key so the name follows the UI language."""
         super().__init__(controller, key)
-        self._attr_translation_key = None
-        self._attr_name = name
+        self._attr_translation_key = key
         self._attr_icon = icon
 
     async def async_added_to_hass(self) -> None:
@@ -125,36 +123,25 @@ class BridgeSensorSpec:
     """One bridge sensor and which FordPass China readings it needs."""
 
     key: str
-    name: str
     icon: str
     requires: tuple[str, ...]
     unit: str | None = None
 
 
 SENSOR_SPECS: tuple[BridgeSensorSpec, ...] = (
-    BridgeSensorSpec("bridge_ignition", "Ignition", "mdi:engine", ("ignition",)),
-    BridgeSensorSpec("bridge_doors", "Doors", "mdi:car-door", DOOR_KEYS),
-    BridgeSensorSpec("bridge_windows", "Windows", "mdi:window-closed", WINDOW_KEYS),
+    BridgeSensorSpec("bridge_ignition", "mdi:engine", ("ignition",)),
+    BridgeSensorSpec("bridge_doors", "mdi:car-door", DOOR_KEYS),
+    BridgeSensorSpec("bridge_windows", "mdi:window-closed", WINDOW_KEYS),
     BridgeSensorSpec(
         "bridge_tires",
-        "Tire pressure",
         "mdi:car-tire-alert",
         (*TIRE_KEYS, *TIRE_STATUS_KEYS),
     ),
-    BridgeSensorSpec("bridge_alarm", "Alarm", "mdi:alarm", ("alarm_status",)),
-    BridgeSensorSpec("bridge_fuel", "Fuel", "mdi:fuel", ("fuel_level",), unit="%"),
-    BridgeSensorSpec(
-        "bridge_soc", "Battery", "mdi:battery-high", ("battery_fill_level",), unit="%"
-    ),
-    BridgeSensorSpec(
-        "bridge_ev_plug", "Charging plug", "mdi:power-plug", ("plug_status",)
-    ),
-    BridgeSensorSpec(
-        "bridge_ev_charging",
-        "Charging",
-        "mdi:power-plug",
-        ("charging_status",),
-    ),
+    BridgeSensorSpec("bridge_alarm", "mdi:alarm", ("alarm_status",)),
+    BridgeSensorSpec("bridge_fuel", "mdi:fuel", ("fuel_level",), unit="%"),
+    BridgeSensorSpec("bridge_soc", "mdi:battery-high", ("battery_fill_level",), unit="%"),
+    BridgeSensorSpec("bridge_ev_plug", "mdi:power-plug", ("plug_status",)),
+    BridgeSensorSpec("bridge_ev_charging", "mdi:power-plug", ("charging_status",)),
 )
 
 
@@ -165,7 +152,7 @@ class BridgeSensor(BridgeEntity, SensorEntity):
         self, controller: FordAssistantController, spec: BridgeSensorSpec
     ) -> None:
         """Initialise from the spec."""
-        super().__init__(controller, spec.key, spec.name, spec.icon)
+        super().__init__(controller, spec.key, spec.icon)
         self._spec = spec
         self.SOURCE_KEYS = spec.requires
         if spec.unit:
@@ -245,7 +232,7 @@ class VehicleLock(BridgeEntity, LockEntity):
     SOURCE_KEYS = ("lock_status", "lock_door", "unlock_door")
 
     def __init__(self, controller: FordAssistantController) -> None:
-        super().__init__(controller, "bridge_lock", "Vehicle lock", "mdi:lock")
+        super().__init__(controller, "bridge_lock", "mdi:lock")
 
     @property
     def is_locked(self) -> bool | None:
@@ -270,9 +257,7 @@ class RemoteStart(BridgeEntity, SwitchEntity):
     SOURCE_KEYS = ("engine", "remote_start")
 
     def __init__(self, controller: FordAssistantController) -> None:
-        super().__init__(
-            controller, "bridge_remote_start", "Remote start", "mdi:engine"
-        )
+        super().__init__(controller, "bridge_remote_start", "mdi:engine")
 
     @property
     def is_on(self) -> bool | None:
@@ -302,9 +287,7 @@ class HonkButton(BridgeEntity, ButtonEntity):
     SOURCE_KEYS = ("honk", "va_switch")
 
     def __init__(self, controller: FordAssistantController) -> None:
-        super().__init__(
-            controller, "bridge_honk", "Honk and flash", "mdi:car-light-high"
-        )
+        super().__init__(controller, "bridge_honk", "mdi:car-light-high")
 
     async def async_press(self) -> None:
         """Trigger the momentary honk switch (horn plus lights when available)."""

@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2026-11-11
+
+### Added
+
+- **Simplified Chinese.** The integration now ships a `zh-Hans` translation, so setup, options, service fields and entity names follow the Home Assistant language. The FordPass China bridge entities (**Vehicle lock**, **Doors**, **Windows**, **Tire pressure**, **Alarm**, **Ignition**, **Remote start**, **Honk and flash**, **Fuel**/**Battery**, charging) are translated too, instead of keeping their English names.
+
 ## [1.8.0] - 2026-11-11
 
 ### Added
@@ -150,6 +156,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Actionable notifications with Lock, Honk & Flash, Start and Stop buttons.
 - Feature switches, number and time settings on the vehicle's device, a last-event sensor, a `ford_assistant_alert` event, a repair issue for missing Ford entities, and diagnostics.
 
+[1.8.1]: https://github.com/bisman-automations/ha-ford-assistant/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/bisman-automations/ha-ford-assistant/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/bisman-automations/ha-ford-assistant/compare/v1.6.4...v1.7.0
 [1.6.4]: https://github.com/bisman-automations/ha-ford-assistant/compare/v1.6.3...v1.6.4
