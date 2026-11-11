@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-11-11
+
+### Added
+
+- **FordPass China.** Ford Assistant now also works with the [FordPass China integration](https://github.com/RockJesus/ha-fordpass-cn), next to the [Ford integration](https://github.com/marq24/ha-fordpass). The setup list shows vehicles from both, labelled with their integration when both are installed.
+  - FordPass China reports the car as one entity per door, window and wheel, in Chinese. Ford Assistant adds **bridge entities** for a China vehicle — **Vehicle lock**, **Doors**, **Windows**, **Tire pressure**, **Alarm**, **Ignition**, **Remote start**, **Honk and flash**, **Fuel**/**Battery** and the charging readings — that combine them into the shapes the alerts, dashboard and Live Activities already use. The dashboard needs no changes.
+  - The bridge **Vehicle lock** restores a real lock entity for FordPass China vehicles, which report lock state and lock/unlock actions separately.
+  - Locking and unlocking, remote start and stop, honk and refresh call the FordPass China entities' own services. Nothing is imported from or patched into either integration.
+  - Where FordPass China has no equivalent reading, the feature is left out rather than guessed: no 12V battery percentage (so no 12V alert), no outside temperature (so morning pre-conditioning can't check it), and no dashboard warning-light count. Everything else — alarm, doors, windows, low fuel or charge, oil life, tire pressure, charging, garage, location and Who's driving — works the same.
+
 ## [1.7.0] - 2026-11-10
 
 ### Added
@@ -140,6 +150,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Actionable notifications with Lock, Honk & Flash, Start and Stop buttons.
 - Feature switches, number and time settings on the vehicle's device, a last-event sensor, a `ford_assistant_alert` event, a repair issue for missing Ford entities, and diagnostics.
 
+[1.8.0]: https://github.com/bisman-automations/ha-ford-assistant/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/bisman-automations/ha-ford-assistant/compare/v1.6.4...v1.7.0
 [1.6.4]: https://github.com/bisman-automations/ha-ford-assistant/compare/v1.6.3...v1.6.4
 [1.6.3]: https://github.com/bisman-automations/ha-ford-assistant/compare/v1.6.2...v1.6.3
