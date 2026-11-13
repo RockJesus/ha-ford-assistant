@@ -13,6 +13,9 @@ from .access import async_ensure_allowed
 from .driving import ACTIVE_DRIVER_NONE, DRIVING_MODES
 from .entity import FordAssistantEntity
 
+# Coordinator or push updates; nothing polls on its own.
+PARALLEL_UPDATES = 0
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
