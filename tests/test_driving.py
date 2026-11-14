@@ -719,8 +719,10 @@ async def test_household_driver_can_open_the_dashboard(
 
 
 async def test_precondition_does_not_start_in_service_mode(
-    hass: HomeAssistant, ford: str
+    hass: HomeAssistant, ford: str, freezer: FrozenDateTimeFactory
 ) -> None:
+    # A Wednesday: preconditioning only runs on its days (weekdays by default).
+    freezer.move_to("2026-11-11 15:00:00+00:00")
     entry = await _setup(hass, ford)
     starts = async_mock_service(hass, "switch", "turn_on")
     entry.runtime_data.set_feature("precondition", True)
