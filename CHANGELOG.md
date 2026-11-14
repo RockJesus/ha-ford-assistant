@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.7.2] - 2026-11-14
 
+### Changed
+
+- **Renaming an entity keeps it running.** From Home Assistant 2026.11, when you change one of this integration's entity IDs, the entity moves to its new ID in place instead of being removed and added again, as Home Assistant now expects. Everything keeps working the same.
+
 ### Fixed
 
 - **Tests pass on weekends.** A test of preconditioning in Service mode assumed the day was a weekday, so it failed on Saturdays and Sundays. Nothing changes for you.
